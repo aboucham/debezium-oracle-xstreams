@@ -1,0 +1,46 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaConnector
+metadata:
+  name: inventory-connector-oracle-logminer
+  namespace: strimzi
+  labels:
+    strimzi.io/cluster: debezium-connect
+spec:
+  class: io.debezium.connector.oracle.OracleConnector
+  tasksMax: 1
+  config:
+    # Database connection - Using Thin driver (pure Java, no native libs needed)
+    database.url: "jdbc:oracle:thin:@oracle-db:1521/ORCLCDB"
+    database.user: c##dbzuser
+    database.password: dbz
+    database.dbname: ORCLCDB
+
+    # LogMiner adapter (works with Thin driver)
+    database.connection.adapter: logminer
+
+    # Topic prefix for all tables
+    topic.prefix: oracle-server
+
+    # Schema and table filtering
+    schema.include.list: C##DBZUSER
+    table.include.list: C##DBZUSER.CUSTOMERS
+
+    # Schema history (required for structure changes)
+    schema.history.internal.kafka.bootstrap.servers: kafka-cluster-kafka-bootstrap:9092
+    schema.history.internal.kafka.topic: schema-changes.oracle.inventory
+
+    # Snapshot mode
+    snapshot.mode: initial
+
+    # Tombstone events
+    tombstones.on.delete: true
+
+    # Decimal handling
+    decimal.handling.mode: precise
+
+    # Time precision
+    time.precision.mode: adaptive_time_microseconds
+
+    # LogMiner configuration
+    log.mining.strategy: online_catalog
+    log.mining.continuous.mine: true

@@ -1,0 +1,86 @@
+---
+# PersistentVolumeClaim for Oracle data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: oracle-storage
+  namespace: strimzi
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 15Gi
+
+---
+# Deployment for Oracle Database 19c with XStreams
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oracle-db
+  namespace: strimzi
+  labels:
+    app: oracle-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oracle-db
+  template:
+    metadata:
+      labels:
+        app: oracle-db
+    spec:
+      serviceAccountName: oracle-sa
+      imagePullSecrets:
+        - name: quay-pull-secret
+      securityContext:
+        fsGroup: 54321
+        fsGroupChangePolicy: "OnRootMismatch"
+      containers:
+        - name: oracle-db
+          image: quay.io/rh_integration/dbz-oracle:19.3.0-xs
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 54321
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - containerPort: 1521
+              name: oracle-port
+          env:
+            - name: ORACLE_PWD
+              value: "top_secret"
+            - name: ORACLE_SID
+              value: "ORCLCDB"
+            - name: ORACLE_PDB
+              value: "ORCLPDB1"
+          volumeMounts:
+            - name: oracle-data
+              mountPath: /opt/oracle/oradata
+      volumes:
+        - name: oracle-data
+          persistentVolumeClaim:
+            claimName: oracle-storage
+
+---
+# Service to expose Oracle Database
+apiVersion: v1
+kind: Service
+metadata:
+  name: oracle-db
+  namespace: strimzi
+  labels:
+    app: oracle-db
+spec:
+  type: ClusterIP
+  ports:
+  - port: 1521
+    targetPort: 1521
+    protocol: TCP
+    name: oracle
+  selector:
+    app: oracle-db

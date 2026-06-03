@@ -1,0 +1,42 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaConnect
+metadata:
+  name: debezium-connect
+  namespace: strimzi
+  annotations:
+    strimzi.io/use-connector-resources: "true"
+spec:
+  version: 4.2.0
+  replicas: 1
+  bootstrapServers: 'kafka-cluster-kafka-bootstrap:9092'
+  
+  # References your pristine custom built container image stream tag
+  image: image-registry.openshift-image-registry.svc:5000/strimzi/debezium-connect:latest
+
+  config:
+    group.id: debezium-connect-cluster
+    config.storage.topic: debezium-connect-configs
+    offset.storage.topic: debezium-connect-offsets
+    status.storage.topic: debezium-connect-status
+    config.storage.replication.factor: -1
+    offset.storage.replication.factor: -1
+    status.storage.replication.factor: -1
+    key.converter: org.apache.kafka.connect.json.JsonConverter
+    value.converter: org.apache.kafka.connect.json.JsonConverter
+    key.converter.schemas.enable: true
+    value.converter.schemas.enable: true
+
+  # JVM options for OCI native library support (XStreams)
+  jvmOptions:
+    javaSystemProperties:
+      - name: java.library.path
+        value: /opt/oracle/lib
+
+  # Template to add environment variables for OCI support
+  template:
+    connectContainer:
+      env:
+        - name: LD_LIBRARY_PATH
+          value: /opt/oracle/lib:$LD_LIBRARY_PATH
+        - name: ORACLE_HOME
+          value: /opt/oracle

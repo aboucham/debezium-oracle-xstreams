@@ -1,0 +1,42 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaConnector
+metadata:
+  name: oracle-xstreams-connector
+  namespace: strimzi
+  labels:
+    strimzi.io/cluster: debezium-connect
+spec:
+  class: io.debezium.connector.oracle.OracleConnector
+  tasksMax: 1
+  config:
+    # Database connection - Using OCI driver with TNS
+    # With TNS configured, we can use the simple TNS name
+    database.url: "jdbc:oracle:oci:@ORCLCDB"
+    database.user: c##dbzuser
+    database.password: dbz
+    database.dbname: ORCLCDB
+
+    # XStreams adapter configuration
+    database.connection.adapter: xstream
+    database.out.server.name: dbzxout
+
+    # Topic prefix
+    topic.prefix: oracle-xstreams
+
+    # Schema and table filtering
+    schema.include.list: C##DBZUSER
+    table.include.list: C##DBZUSER.CUSTOMERS
+
+    # Schema history
+    schema.history.internal.kafka.bootstrap.servers: kafka-cluster-kafka-bootstrap:9092
+    schema.history.internal.kafka.topic: schema-changes.oracle.xstreams
+
+    # Snapshot mode
+    snapshot.mode: initial
+
+    # Tombstone events
+    tombstones.on.delete: true
+
+    # Decimal and time handling
+    decimal.handling.mode: precise
+    time.precision.mode: adaptive_time_microseconds
