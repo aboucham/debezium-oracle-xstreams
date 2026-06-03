@@ -25,6 +25,50 @@ This project handles the complexity of extracting and configuring **OCI native l
 - Quay.io account credentials for Oracle database image
 - Cluster-admin rights (required for granting anyuid SCC to Oracle database)
 
+### Required Secrets (Create Before Deployment)
+
+**IMPORTANT:** You must create these two secrets in the `strimzi` namespace before running any deployment scripts:
+
+#### 1. Red Hat Registry Pull Secret
+
+Required to pull the AMQ Streams Kafka base image from Red Hat registry.
+
+```bash
+# Create the strimzi namespace if it doesn't exist
+oc create namespace strimzi
+
+# Create Red Hat registry pull secret
+oc create secret docker-registry registry-redhat-io \
+  --docker-server=registry.redhat.io \
+  --docker-username=YOUR_REDHAT_USERNAME \
+  --docker-password=YOUR_REDHAT_PASSWORD \
+  --docker-email=YOUR_EMAIL \
+  -n strimzi
+```
+
+Get your credentials from: https://access.redhat.com/terms-based-registry/
+
+#### 2. Quay.io Pull Secret
+
+Required to pull the Oracle database image from Quay.io.
+
+```bash
+# Create Quay.io pull secret
+oc create secret docker-registry quay-pull-secret \
+  --docker-server=quay.io \
+  --docker-username=YOUR_QUAY_USERNAME \
+  --docker-password=YOUR_QUAY_PASSWORD \
+  --docker-email=YOUR_EMAIL \
+  -n strimzi
+```
+
+**Verify secrets are created:**
+```bash
+oc get secrets -n strimzi | grep -E 'registry-redhat-io|quay-pull-secret'
+```
+
+You should see both secrets listed before proceeding with deployment.
+
 ## Quick Start (Remote Deployment)
 
 **Deploy everything without cloning the repository:**
@@ -34,6 +78,8 @@ This project handles the complexity of extracting and configuring **OCI native l
 bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/deploy-all.sh)
 ```
 
+**Prerequisites:** Ensure you have created the required secrets (see [Required Secrets](#required-secrets-create-before-deployment) above).
+
 This remote deployment will:
 1. Deploy Kafka cluster and Console UI (auto-detects OpenShift domain)
 2. Deploy Oracle database with proper security permissions
@@ -41,8 +87,6 @@ This remote deployment will:
 4. Build custom Kafka Connect image with OCI support
 5. Deploy Kafka Connect cluster
 6. Deploy and configure the Debezium Oracle connector
-
-**Note:** You'll need to provide Quay.io credentials when prompted for the Oracle database image.
 
 ## Components
 
@@ -58,6 +102,8 @@ This remote deployment will:
 - Kafka version inside: 4.2.0 (referenced in `deploy/kafka-connect.yaml`)
 
 ## Local Deployment
+
+**Prerequisites:** Ensure you have created the required secrets (see [Required Secrets](#required-secrets-create-before-deployment) above).
 
 ### Option 1: Automated Deployment (Recommended)
 
@@ -224,6 +270,40 @@ oc get route my-console -n strimzi -o jsonpath='{.spec.host}'
 
 ## Troubleshooting
 
+### Missing Required Secrets
+
+**Symptoms:**
+- Oracle pod fails to pull image: `ImagePullBackOff` or `ErrImagePull`
+- Kafka Connect build fails with registry authentication error
+- Build shows: `error: build error: failed to pull image`
+
+**Solution:** Verify both required secrets exist:
+
+```bash
+# Check if secrets exist
+oc get secrets -n strimzi | grep -E 'registry-redhat-io|quay-pull-secret'
+```
+
+If missing, create them:
+
+```bash
+# Red Hat registry pull secret (for AMQ Streams base image)
+oc create secret docker-registry registry-redhat-io \
+  --docker-server=registry.redhat.io \
+  --docker-username=YOUR_REDHAT_USERNAME \
+  --docker-password=YOUR_REDHAT_PASSWORD \
+  --docker-email=YOUR_EMAIL \
+  -n strimzi
+
+# Quay.io pull secret (for Oracle database image)
+oc create secret docker-registry quay-pull-secret \
+  --docker-server=quay.io \
+  --docker-username=YOUR_QUAY_USERNAME \
+  --docker-password=YOUR_QUAY_PASSWORD \
+  --docker-email=YOUR_EMAIL \
+  -n strimzi
+```
+
 ### Oracle Pod Fails to Start - SCC Error
 
 If you see an error like:
@@ -271,14 +351,22 @@ oc get pods -n strimzi -l app=oracle-db -o wide
 
 ### Build Failures
 
-Check Red Hat registry credentials:
+**First, verify the Red Hat registry pull secret exists:**
 ```bash
 oc get secret registry-redhat-io -n strimzi
 ```
 
-View build logs:
+If missing, see [Missing Required Secrets](#missing-required-secrets) above.
+
+**View build logs:**
 ```bash
 oc logs -f bc/debezium-connect -n strimzi
+```
+
+**Check build status:**
+```bash
+oc get builds -n strimzi
+oc describe build <build-name> -n strimzi
 ```
 
 ### Connector Failures
