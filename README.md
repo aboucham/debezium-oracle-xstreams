@@ -25,6 +25,25 @@ This project handles the complexity of extracting and configuring **OCI native l
 - Quay.io account credentials for Oracle database image
 - Cluster-admin rights (required for granting anyuid SCC to Oracle database)
 
+## Quick Start (Remote Deployment)
+
+**Deploy everything without cloning the repository:**
+
+```bash
+# One-line deployment - no local files needed
+bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/deploy-all.sh)
+```
+
+This remote deployment will:
+1. Deploy Kafka cluster and Console UI (auto-detects OpenShift domain)
+2. Deploy Oracle database with proper security permissions
+3. Extract OCI native libraries from Oracle pod
+4. Build custom Kafka Connect image with OCI support
+5. Deploy Kafka Connect cluster
+6. Deploy and configure the Debezium Oracle connector
+
+**Note:** You'll need to provide Quay.io credentials when prompted for the Oracle database image.
+
 ## Components
 
 - **Debezium Oracle Connector**: 3.4.3.Final-redhat-00001
@@ -36,44 +55,57 @@ This project handles the complexity of extracting and configuring **OCI native l
 
 **Note:** AMQ Streams and Kafka use different versioning:
 - AMQ Streams image tag: `kafka-42-rhel9:3.2.0` (AMQ Streams 3.2.0)
-- Kafka version inside: 4.2.0 (referenced in `kafka-connect.yaml`)
+- Kafka version inside: 4.2.0 (referenced in `deploy/kafka-connect.yaml`)
 
-## Quick Start
+## Local Deployment
 
-### Automated Deployment (Recommended)
+### Option 1: Automated Deployment (Recommended)
 
-Deploy everything with a single command:
+Clone the repository and deploy everything with a single command:
 
 ```bash
-./deploy-all.sh
+git clone https://github.com/aboucham/debezium-oracle-xstreams.git
+cd debezium-oracle-xstreams
+./deploy/deploy-all.sh
 ```
 
-This script will:
-1. Deploy Kafka cluster and Console UI (auto-detects OpenShift domain)
-2. Deploy Oracle database with proper security permissions
-3. Extract OCI native libraries from Oracle pod
-4. Build custom Kafka Connect image with OCI support
-5. Deploy Kafka Connect cluster
-6. Deploy and configure the Debezium Oracle connector
-
-**Note:** You'll need to provide Quay.io credentials when prompted for the Oracle database image.
-
-### Manual Step-by-Step Deployment
+### Option 2: Manual Step-by-Step Deployment
 
 If you prefer to run steps individually:
 
 ```bash
+git clone https://github.com/aboucham/debezium-oracle-xstreams.git
+cd debezium-oracle-xstreams
+
 # Step 1: Deploy Kafka cluster and Console UI
-./01-deploy-kafka.sh
+./deploy/01-deploy-kafka.sh
 
 # Step 2: Deploy Oracle database
-./02-deploy-oracle.sh
+./deploy/02-deploy-oracle.sh
 
 # Step 3: Extract OCI libraries and build Kafka Connect
-./03-build-kafka-connect.sh
+./deploy/03-build-kafka-connect.sh
 
 # Step 4: Deploy Kafka Connect and connector
-./04-deploy-connector.sh
+./deploy/04-deploy-connector.sh
+```
+
+### Option 3: Step-by-Step Remote Deployment
+
+Run individual deployment steps without cloning:
+
+```bash
+# Step 1: Deploy Kafka cluster and Console UI
+bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/01-deploy-kafka.sh)
+
+# Step 2: Deploy Oracle database
+bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/02-deploy-oracle.sh)
+
+# Step 3: Extract OCI libraries and build Kafka Connect
+bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/03-build-kafka-connect.sh)
+
+# Step 4: Deploy Kafka Connect and connector
+bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/04-deploy-connector.sh)
 ```
 
 ## Key Features
@@ -98,159 +130,96 @@ The deployment automatically handles OpenShift security context constraints:
 
 This solves the common error: `"unable to validate against any security context constraint"`
 
-## Deployment Steps
+## Detailed Deployment Guide
 
-### Step 0: Prerequisites - Red Hat Registry Access
+The automated scripts handle all these steps for you, but here's what happens under the hood:
 
-Before building, you need access to Red Hat Container Registry to pull the AMQ Streams base image.
+### What the Scripts Do
 
-**Interactive setup:**
-```bash
-./create-registry-secret.sh
-```
+**Script 01: Deploy Kafka** (`deploy/01-deploy-kafka.sh`)
+- Creates Kafka cluster with KRaft mode (no ZooKeeper)
+- Auto-detects OpenShift cluster domain
+- Deploys Kafka Console UI with auto-configured hostname
+- Waits for all Kafka components to be ready
 
-**Manual setup:**
-```bash
-oc create secret docker-registry registry-redhat-io \
-  --docker-server=registry.redhat.io \
-  --docker-username=YOUR_REDHAT_USERNAME \
-  --docker-password=YOUR_REDHAT_PASSWORD \
-  --docker-email=YOUR_EMAIL \
-  -n strimzi
-```
+**Script 02: Deploy Oracle** (`deploy/02-deploy-oracle.sh`)
+- Creates service account with anyuid SCC permissions
+- Deploys Oracle 19c database with XStreams enabled
+- Configures proper security context for UID 54321
+- Waits for Oracle to be ready
 
-Get your credentials from: https://access.redhat.com/terms-based-registry/
+**Script 03: Build Kafka Connect** (`deploy/03-build-kafka-connect.sh`)
+- Calls `deploy/extract-oci-libraries.sh` to extract OCI native libraries from Oracle pod
+- Calls `deploy/download-dbz-oracle-xs-plugins.sh` to download Debezium plugins and Oracle drivers
+- Calls `deploy/build-kafka-connect-dbz-oracle-xs-plugins.sh` to build custom image
+- Creates optimized `build/` directory with plugins and OCI libraries
+- Builds and pushes custom Kafka Connect image to OpenShift registry
 
-### Step 1: Extract OCI Native Libraries (for XStreams)
+**Script 04: Deploy Connector** (`deploy/04-deploy-connector.sh`)
+- Deploys Kafka Connect cluster using custom image
+- Waits for Kafka Connect pod to be ready
+- Applies Debezium Oracle connector configuration
+- Verifies connector is running
 
-**Important**: XStreams requires OCI native libraries. Extract them from the Oracle database pod:
+### Manual YAML Deployment (Remote)
 
-```bash
-./extract-oci-libraries.sh
-```
-
-This extracts all necessary `.so` files (libclntsh.so, libociei.so, etc.) to `build/oci-libs/`.
-
-**Skip this step** if you only want LogMiner support (but this project is optimized for XStreams).
-
-### Step 2: Download Oracle Drivers and Debezium Plugins
-
-This single script handles Oracle driver extraction, Debezium component downloads, and OCI library integration:
+If you want to apply YAML files directly without cloning:
 
 ```bash
-./download-dbz-oracle-xs-plugins.sh
+# Deploy Oracle database
+oc apply -f https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/oracle-complete.yaml
+
+# Deploy Kafka Connect cluster
+oc apply -f https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/kafka-connect.yaml
+
+# Deploy LogMiner connector (Phase 1 - simpler, working)
+oc apply -f https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/kafkaconnector-oracle-logminer.yaml
+
+# Or deploy XStreams connector (Phase 2 - requires OCI build)
+oc apply -f https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/kafkaconnector-oracle-xstreams-final.yaml
 ```
 
-This script will:
-1. **Auto-detect the Oracle database pod** using label selector `app=oracle-db`
-2. **Extract Oracle drivers** from the pod:
-   - `xstreams.jar` from `/opt/oracle/product/19c/dbhome_1/rdbms/jlib/`
-   - `ojdbc8.jar` from `/opt/oracle/product/19c/dbhome_1/jdbc/lib/`
-3. **Download Debezium Oracle connector** (3.4.3.Final) from Red Hat Maven
-4. **Download Debezium scripting support** and Groovy runtime libraries
-5. **Organize all components** into the plugin directory structure
+### Alternative: LogMiner vs XStreams
 
-This creates the following structure:
-```
-build/
-├── Dockerfile                     (auto-generated)
-└── plugins/
-    └── debezium-oracle-connector/
-        ├── debezium-connector-oracle/ (extracted from plugin.zip)
-        ├── debezium-scripting/        (extracted from scripting.zip)
-        ├── groovy-*.jar               (3 Groovy runtime libraries)
-        ├── ojdbc8.jar                 (copied from Oracle pod)
-        └── xstreams.jar               (copied from Oracle pod)
-```
+**LogMiner** (Phase 1 - Working):
+- Uses JDBC Thin driver (pure Java, no native libraries)
+- Performance: ~50,000 events/second
+- Latency: 1-3 seconds
+- Simpler setup, no OCI libraries needed
+- Use: `deploy/kafkaconnector-oracle-logminer.yaml`
 
-**Note:** The `build/` directory is excluded from git (see `.gitignore`) and contains only what's needed for the Docker build, making the upload to OpenShift much faster.
-
-### Step 3: Build Custom Kafka Connect Image
-
-Build and push the custom Kafka Connect image to OpenShift internal registry:
-
-```bash
-./build-kafka-connect-dbz-oracle-xs-plugins.sh
-```
-
-This script:
-1. Verifies the `build/` directory and Dockerfile exist
-2. Creates ImageStream `debezium-connect` in the `strimzi` namespace (if needed)
-3. Creates a binary build configuration (if needed)
-4. Configures Dockerfile-based build strategy
-5. Attaches Red Hat registry pull secret
-6. **Uploads only the `build/` directory** (fast!) to OpenShift
-7. Follows the build log output
-
-**Performance:** By uploading only the `build/` directory instead of the entire project, this step is significantly faster.
-
-### Step 4: Deploy Kafka Connect
-
-Deploy the Kafka Connect cluster using the custom image:
-
-```bash
-oc apply -f kafka-connect.yaml
-```
-
-Verify the deployment:
-```bash
-oc get kafkaconnect -n strimzi
-oc get pods -n strimzi -l strimzi.io/cluster=debezium-connect
-```
-
-### Step 5: Deploy XStreams Connector
-
-```bash
-oc apply -f kafkaconnector-oracle-xs.yaml
-```
-
-Monitor connector startup:
-```bash
-./verify-connector.sh
-oc logs -f debezium-connect-connect-0 -n strimzi | grep -i xstream
-```
-
-### Step 6: Verify OCI Libraries
-
-Test that OCI libraries are properly loaded:
-
-```bash
-./test-oci-libraries.sh
-```
-
-Expected output:
-```
-✅ OCI libraries are properly installed
-```
-
-### Alternative: LogMiner (without OCI)
-
-If you prefer LogMiner over XStreams (lower performance but simpler setup):
-
-```bash
-# Skip Step 1 (no OCI libraries needed)
-# Run Step 2-4 as normal
-# Apply LogMiner connector instead:
-oc apply -f kafkaconnector-oracle-logminer.yaml
-```
-
-See [XSTREAMS_VS_LOGMINER.md](XSTREAMS_VS_LOGMINER.md) for comparison.
+**XStreams** (Phase 2 - Requires OCI):
+- Uses JDBC OCI driver (requires Oracle Instant Client)
+- Performance: ~100,000+ events/second
+- Latency: Sub-second
+- Complex setup, requires 2.5GB Oracle Instant Client libraries
+- Use: `deploy/kafkaconnector-oracle-xstreams-final.yaml`
 
 ## Verification
 
 Check connector status:
 ```bash
-oc get kafkaconnector oracle-source-connector -n strimzi -o yaml
+# For LogMiner connector
+oc get kafkaconnector inventory-connector-oracle-logminer -n strimzi -o yaml
+
+# For XStreams connector
+oc get kafkaconnector inventory-connector-oracle-xs -n strimzi -o yaml
 ```
 
 View Kafka Connect logs:
 ```bash
-oc logs -f deployment/debezium-connect-connect -n strimzi
+oc logs -f debezium-connect-connect-0 -n strimzi
 ```
 
 List Kafka topics:
 ```bash
 oc exec -it kafka-cluster-kafka-0 -n strimzi -- bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+```
+
+Access Kafka Console UI:
+```bash
+# Get the Console URL
+oc get route my-console -n strimzi -o jsonpath='{.spec.host}'
 ```
 
 ## Troubleshooting
@@ -262,7 +231,7 @@ If you see an error like:
 pods "oracle-db-xxx-" is forbidden: unable to validate against any security context constraint
 ```
 
-**Solution:** The `02-deploy-oracle.sh` script automatically fixes this by:
+**Solution:** The `deploy/02-deploy-oracle.sh` script automatically fixes this by:
 1. Creating service account `oracle-sa`  
 2. Granting `anyuid` SCC
 
@@ -289,64 +258,19 @@ oc get ingresses.config/cluster -o jsonpath='{.spec.domain}'
 
 Example: `apps.cluster-name.region.domain.com`
 
-### libnsl.so.1 Missing Error
+### Oracle Pod Not Found
 
-If Kafka Connect fails with:
-```
-libnsl.so.1: cannot open shared object file: No such file or directory
-```
-
-This means the Dockerfile wasn't built with `libnsl2` package. The `download-dbz-oracle-xs-plugins.sh` script automatically adds this dependency.
-
-Rebuild:
-```bash
-./download-dbz-oracle-xs-plugins.sh  # Regenerates Dockerfile with libnsl2
-./build-kafka-connect-dbz-oracle-xs-plugins.sh  # Rebuilds image
-```
-
-### Red Hat registry pull secret missing
-
-If you get an error about missing pull secret:
-
-```bash
-# Interactive creation
-./create-registry-secret.sh
-
-# Or manual creation
-oc create secret docker-registry registry-redhat-io \
-  --docker-server=registry.redhat.io \
-  --docker-username=YOUR_USERNAME \
-  --docker-password=YOUR_PASSWORD \
-  --docker-email=YOUR_EMAIL \
-  -n strimzi
-```
-
-### Oracle pod not found
 If the script cannot find the Oracle database pod:
 ```bash
 # Verify the pod exists and has the correct label
 oc get pods -n strimzi -l app=oracle-db
 
-# If using a different namespace, edit the NAMESPACE variable in the script
+# Check pod status
+oc get pods -n strimzi -l app=oracle-db -o wide
 ```
 
-### Driver extraction errors
-Ensure the Oracle database pod is running and the paths are correct:
-```bash
-# Verify the files exist in the pod
-ORACLE_POD=$(oc get pods -n strimzi -l app=oracle-db -o jsonpath='{.items[0].metadata.name}')
-oc exec -it ${ORACLE_POD} -n strimzi -- ls -l /opt/oracle/product/19c/dbhome_1/rdbms/jlib/xstreams.jar
-oc exec -it ${ORACLE_POD} -n strimzi -- ls -l /opt/oracle/product/19c/dbhome_1/jdbc/lib/ojdbc8.jar
-```
+### Build Failures
 
-### Build directory not found
-If the build script cannot find the build directory:
-```bash
-# Run the download script first
-./download-dbz-oracle-xs-plugins.sh
-```
-
-### Build failures
 Check Red Hat registry credentials:
 ```bash
 oc get secret registry-redhat-io -n strimzi
@@ -357,64 +281,83 @@ View build logs:
 oc logs -f bc/debezium-connect -n strimzi
 ```
 
-### Connector failures
+### Connector Failures
+
 Check connector logs for specific errors:
 ```bash
-oc logs -f deployment/debezium-connect-connect -n strimzi | grep -i error
+oc logs -f debezium-connect-connect-0 -n strimzi | grep -i error
 ```
 
-### XStreams configuration issues
-Verify XStreams is properly configured in the Oracle database:
-```sql
--- Check if XStream is configured
-SELECT * FROM DBA_XSTREAM_OUTBOUND;
+Get connector status:
+```bash
+oc get kafkaconnector -n strimzi
+oc describe kafkaconnector inventory-connector-oracle-logminer -n strimzi
+```
+
+### XStreams Specific Issues
+
+If using XStreams connector and getting `SQLFeatureNotSupportedException: Unsupported feature: getOCIHandles`:
+- This means the connector is using JDBC Thin driver instead of OCI driver
+- XStreams requires Oracle Instant Client libraries (2.5GB)
+- Ensure the Kafka Connect image was built with OCI libraries via `deploy/03-build-kafka-connect.sh`
+
+## Project Structure
+
+```
+debezium-oracle-xstreams/
+├── README.md                                    # This file
+├── .gitignore                                   # Git ignore patterns
+└── deploy/                                      # All deployment files
+    ├── 01-deploy-kafka.sh                      # Step 1: Deploy Kafka cluster and Console UI
+    ├── 02-deploy-oracle.sh                     # Step 2: Deploy Oracle database with SCC
+    ├── 03-build-kafka-connect.sh               # Step 3: Extract OCI, download plugins, build image
+    ├── 04-deploy-connector.sh                  # Step 4: Deploy connector configuration
+    ├── deploy-all.sh                           # One-command automated deployment
+    ├── extract-oci-libraries.sh                # Extract OCI native libraries from Oracle pod
+    ├── download-dbz-oracle-xs-plugins.sh       # Download Debezium plugins and Oracle drivers
+    ├── build-kafka-connect-dbz-oracle-xs-plugins.sh  # Build custom Kafka Connect image
+    ├── oracle-complete.yaml                    # Oracle database deployment (PVC + Deployment + Service)
+    ├── kafka-connect.yaml                      # Kafka Connect cluster configuration
+    ├── kafkaconnector-oracle-logminer.yaml     # LogMiner connector (Phase 1 - working)
+    └── kafkaconnector-oracle-xstreams-final.yaml  # XStreams connector (Phase 2 - requires OCI)
 ```
 
 ## File Descriptions
 
-### Main Deployment Files
-| File | Purpose |
-|------|---------|
-| `oracle-complete.yaml` | All-in-one Oracle deployment (PVC + Deployment + Service) |
-| `oracle-service.yaml` | Standalone Oracle service definition |
-| `kafkaconnector-oracle-xs.yaml` | Debezium Oracle connector configuration |
-| `kafka-connect.yaml` | Strimzi KafkaConnect custom resource |
-| `DEPLOYMENT.md` | Detailed Oracle database deployment guide |
+### Deployment Scripts
 
-### Setup Scripts
-| File | Purpose |
-|------|---------|
-| `create-registry-secret.sh` | Interactive script to create Red Hat registry pull secret |
-| `extract-oci-libraries.sh` | **Extract OCI native libraries from Oracle pod (for XStreams)** |
-| `download-dbz-oracle-xs-plugins.sh` | Extract Oracle drivers, download Debezium, integrate OCI libs |
-| `build-kafka-connect-dbz-oracle-xs-plugins.sh` | Build custom Kafka Connect image in OpenShift |
-| `update-dockerfile-for-oci.sh` | Manually update Dockerfile for OCI support (if needed) |
+| File | Purpose | Can Run Remotely |
+|------|---------|------------------|
+| `deploy/deploy-all.sh` | One-command automated deployment of entire stack | ✅ Yes |
+| `deploy/01-deploy-kafka.sh` | Deploy Kafka cluster and Console UI with auto-detected domain | ✅ Yes |
+| `deploy/02-deploy-oracle.sh` | Deploy Oracle database with anyuid SCC permissions | ✅ Yes |
+| `deploy/03-build-kafka-connect.sh` | Extract OCI, download plugins, build custom image | ✅ Yes |
+| `deploy/04-deploy-connector.sh` | Deploy Kafka Connect and Debezium connector | ✅ Yes |
 
-### Diagnostic Scripts
-| File | Purpose |
-|------|---------|
-| `test-oci-libraries.sh` | **Verify OCI libraries are loaded in Kafka Connect (XStreams)** |
-| `test-service-connectivity.sh` | Test Oracle service DNS and TCP connectivity |
-| `test-oracle-connection.sh` | Test JDBC connection from Kafka Connect pod |
-| `verify-connector.sh` | Check Kafka connector status and logs |
-| `verify-oracle-logminer-setup.sh` | Check Oracle LogMiner prerequisites |
-| `find-oracle-service.sh` | Find Oracle service name and details |
-| `check-current-build.sh` | Check current build status |
-| `troubleshoot-build.sh` | Full build diagnostics |
-| `test-all-url-formats.sh` | Test different JDBC URL formats |
-| `diagnose-jdbc-driver.sh` | Diagnose JDBC driver configuration |
+### Build Helper Scripts
 
-### Generated Files
 | File | Purpose |
 |------|---------|
-| `build/Dockerfile` | Container image definition (auto-generated, base: kafka-42-rhel9:3.2.0) |
-| `build/plugins/` | Plugin directory with all JARs (auto-generated) |
+| `deploy/extract-oci-libraries.sh` | Extract OCI native libraries from Oracle pod (2.5GB for XStreams) |
+| `deploy/download-dbz-oracle-xs-plugins.sh` | Download Debezium plugins, extract Oracle drivers (xstreams.jar, ojdbc8.jar) |
+| `deploy/build-kafka-connect-dbz-oracle-xs-plugins.sh` | Build and push custom Kafka Connect image to OpenShift registry |
 
-### Legacy Files (can be removed after migration)
+### YAML Configurations
+
+| File | Purpose | Can Apply Remotely |
+|------|---------|---------------------|
+| `deploy/oracle-complete.yaml` | Oracle database deployment (PVC + Deployment + Service) | ✅ Yes |
+| `deploy/kafka-connect.yaml` | Kafka Connect cluster configuration with custom image | ✅ Yes |
+| `deploy/kafkaconnector-oracle-logminer.yaml` | LogMiner connector config (Thin driver, 50k events/sec) | ✅ Yes |
+| `deploy/kafkaconnector-oracle-xstreams-final.yaml` | XStreams connector config (OCI driver, 100k+ events/sec) | ✅ Yes |
+
+### Generated Files (Not in Repository)
+
 | File | Purpose |
 |------|---------|
-| `oracle-pvc.yaml` | Oracle PVC (included in oracle-complete.yaml) |
-| `oracle-deployment.yaml` | Oracle Deployment (included in oracle-complete.yaml) |
+| `build/Dockerfile` | Auto-generated container image definition (base: kafka-42-rhel9:3.2.0) |
+| `build/plugins/` | Auto-generated plugin directory with Debezium and Oracle JARs |
+| `build/oci-libs/` | Extracted OCI native libraries from Oracle pod (for XStreams only) |
 
 ## Architecture
 
