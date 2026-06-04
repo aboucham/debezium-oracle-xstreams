@@ -557,11 +557,16 @@ debezium-oracle-xstreams/
 
 To completely remove all deployed components and start from scratch:
 
-### Option 1: Quick Cleanup (Remove Everything)
+### Option 1: Complete Namespace Deletion (Fastest)
+
+Delete the entire namespace and recreate with secrets:
 
 ```bash
-# Delete all resources in strimzi namespace
+# Delete the entire strimzi namespace
 oc delete namespace strimzi
+
+# Wait for namespace deletion to complete
+oc wait --for=delete namespace/strimzi --timeout=300s
 
 # Recreate namespace
 oc create namespace strimzi
@@ -584,32 +589,46 @@ oc create secret docker-registry quay-pull-secret \
 # Ready to deploy again
 ```
 
-### Option 2: Selective Cleanup (Keep Secrets and Kafka)
+### Option 2: Step-by-Step Cleanup (Keep Namespace and Secrets)
+
+Clean up all resources without deleting the namespace:
 
 ```bash
-# Delete only Debezium components
+# Step 1: Delete Kafka connectors
 oc delete kafkaconnector --all -n strimzi
-oc delete kafkaconnect debezium-connect -n strimzi
-oc delete bc debezium-connect -n strimzi
-oc delete is debezium-connect -n strimzi
 
-# Delete Oracle database
-oc delete deployment oracle-db -n strimzi
-oc delete service oracle-db -n strimzi
-oc delete pvc oracle-data -n strimzi
+# Step 2: Delete Kafka Connect
+oc delete kafkaconnect debezium-connect -n strimzi 2>/dev/null || echo "No KafkaConnect found"
 
-# Optionally delete Kafka cluster (keeps Console UI)
-oc delete kafka kafka-cluster -n strimzi
+# Step 3: Delete BuildConfigs and ImageStreams
+oc delete bc debezium-connect -n strimzi 2>/dev/null || echo "No BuildConfig found"
+oc delete is debezium-connect -n strimzi 2>/dev/null || echo "No ImageStream found"
 
-# Optionally delete Console UI
-oc delete deployment my-console -n strimzi
-oc delete service my-console -n strimzi
-oc delete route my-console -n strimzi
+# Step 4: Delete Oracle database
+oc delete deployment oracle-db -n strimzi 2>/dev/null || echo "No Oracle deployment found"
+oc delete service oracle-db -n strimzi 2>/dev/null || echo "No Oracle service found"
 
-# Service account and SCC cleanup
-oc delete sa oracle-sa -n strimzi
-oc adm policy remove-scc-from-user anyuid -z oracle-sa -n strimzi
+# Step 5: Delete Kafka cluster components
+# Important: Delete NodePools first, then Kafka resource
+oc delete knp broker controller -n strimzi 2>/dev/null || echo "No Kafka NodePools found"
+oc delete kafka kafka-cluster -n strimzi 2>/dev/null || echo "No Kafka cluster found"
+
+# Step 6: Delete Console UI
+oc delete consoles.console.streamshub.github.com my-console -n strimzi 2>/dev/null || echo "No Console found"
+
+# Step 7: Delete all PVCs (Kafka and Oracle storage)
+oc delete pvc --all -n strimzi
+
+# Step 8: Clean up service account and SCC
+oc delete sa oracle-sa -n strimzi 2>/dev/null || echo "No service account found"
+oc adm policy remove-scc-from-user anyuid -z oracle-sa -n strimzi 2>/dev/null || echo "SCC already removed"
 ```
+
+**Important Notes:**
+- **KafkaNodePools**: Must be deleted before or with the Kafka resource. The deployment creates `broker` and `controller` node pools.
+- **Console**: Uses a custom resource `consoles.console.streamshub.github.com` that must be deleted separately.
+- **PVCs**: Use `--all` to delete all persistent volume claims (Kafka broker, controller, and Oracle storage).
+- **Secrets**: Preserved in both options so you don't need to recreate them.
 
 ### Option 3: Local Cleanup (Remove Downloaded Files)
 
@@ -632,17 +651,24 @@ rm -f oracle-mesg.tar.gz
 ### Verification After Cleanup
 
 ```bash
-# Verify namespace is clean (should show only secrets and serviceaccounts)
-oc get all -n strimzi
+# Verify namespace is clean (should show no pods or deployments)
+oc get pods -n strimzi
 
 # Verify no Kafka resources remain
-oc get kafka,kafkaconnect,kafkaconnector -n strimzi
+oc get kafka,kafkaconnect,kafkaconnector,knp -n strimzi
+
+# Verify no Console remains
+oc get consoles.console.streamshub.github.com -n strimzi
 
 # Verify no builds remain
 oc get builds,bc,is -n strimzi
 
-# Verify PVCs are removed
+# Verify all PVCs are removed
 oc get pvc -n strimzi
+
+# Should show: "No resources found in strimzi namespace" for all commands above
+# Secrets and service accounts are preserved
+oc get secrets,sa -n strimzi
 ```
 
 ### Start Fresh After Cleanup
