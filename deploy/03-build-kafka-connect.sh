@@ -1,11 +1,20 @@
 #!/bin/bash
-# Extract OCI libraries and build Kafka Connect image
+# Download Oracle Instant Client 21.x and build Kafka Connect image
 set -e
 
 NAMESPACE="strimzi"
+GITHUB_RAW_BASE="https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy"
 
-echo "=== Step 3: Build Kafka Connect with OCI Support ==="
+echo "=== Step 3: Build Kafka Connect with Oracle Instant Client 21.x ==="
 echo ""
+
+# Detect if running locally or remotely
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+if [ -f "${SCRIPT_DIR}/download-oracle-instantclient-21.sh" ]; then
+    EXEC_MODE="local"
+else
+    EXEC_MODE="remote"
+fi
 
 # Check if in correct namespace
 oc project ${NAMESPACE} 2>/dev/null || {
@@ -21,7 +30,9 @@ for i in {1..60}; do
     if [ -n "$ORACLE_POD" ]; then
         POD_STATUS=$(oc get pod ${ORACLE_POD} -n ${NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
         if [ "$POD_STATUS" = "Running" ]; then
-            echo "✓ Oracle pod ${ORACLE_POD} is ready"
+            # Wait a bit more for Oracle to be fully initialized
+            echo "✓ Oracle pod ${ORACLE_POD} is running, waiting for initialization..."
+            sleep 10
             break
         fi
     fi
@@ -35,53 +46,67 @@ if [ -z "$ORACLE_POD" ] || [ "$POD_STATUS" != "Running" ]; then
     exit 1
 fi
 
-# Extract OCI libraries using tar-based approach (more reliable than copying individual files)
+# Download Oracle Instant Client 21.x and Debezium components
 echo ""
-echo "Extracting OCI libraries from Oracle pod (this will take 2-3 minutes)..."
-./extract-oci-libraries.sh
+echo "Downloading Oracle Instant Client 21.15 and Debezium components..."
+echo "This will take 5-8 minutes (downloading 85MB Oracle IC + extracting from Oracle pod)..."
+if [ "$EXEC_MODE" = "local" ]; then
+    bash "${SCRIPT_DIR}/download-oracle-instantclient-21.sh"
+else
+    bash <(curl -s "${GITHUB_RAW_BASE}/download-oracle-instantclient-21.sh")
+fi
 
-# Verify critical OCI library
+# Verify Oracle Instant Client 21.x was downloaded
 echo ""
-echo "Verifying OCI library extraction..."
-if [ ! -f "build/oci-libs/libocijdbc19.so" ]; then
-    echo "✗ Critical library libocijdbc19.so not found"
-    echo "Extraction may have failed. Check build/oci-libs/ directory"
+echo "Verifying Oracle Instant Client 21.x..."
+if [ ! -f "build/oracle-instantclient/lib/libocijdbc21.so" ]; then
+    echo "✗ Critical library libocijdbc21.so not found"
+    echo "Download may have failed. Check build/oracle-instantclient/lib/ directory"
     exit 1
 fi
 
-FILE_SIZE=$(ls -lh build/oci-libs/libocijdbc19.so | awk '{print $5}')
-echo "✓ libocijdbc19.so found (${FILE_SIZE})"
+if [ ! -f "build/plugins/debezium-oracle-connector/ojdbc11.jar" ]; then
+    echo "✗ ojdbc11.jar not found"
+    echo "Download may have failed. Check build/plugins/debezium-oracle-connector/ directory"
+    exit 1
+fi
 
-# Download Debezium components
-echo ""
-echo "Downloading Debezium components and Oracle drivers..."
-./download-dbz-oracle-xs-plugins.sh
+IC_SIZE=$(du -sh build/oracle-instantclient 2>/dev/null | awk '{print $1}')
+echo "✓ Oracle Instant Client 21.x downloaded (${IC_SIZE})"
 
-# Verify Dockerfile was created with OCI support
+OJDBC_SIZE=$(ls -lh build/plugins/debezium-oracle-connector/ojdbc11.jar | awk '{print $5}')
+echo "✓ ojdbc11.jar found (${OJDBC_SIZE})"
+
+# Verify Dockerfile was created
 echo ""
 echo "Verifying Dockerfile configuration..."
-if ! grep -q "COPY ./oci-libs/" build/Dockerfile 2>/dev/null; then
-    echo "✗ Dockerfile not configured for OCI libraries"
+if ! grep -q "COPY ./oracle-instantclient/" build/Dockerfile 2>/dev/null; then
+    echo "✗ Dockerfile not configured for Oracle Instant Client"
     exit 1
 fi
 
-if ! grep -q "libnsl2" build/Dockerfile 2>/dev/null; then
-    echo "✗ Dockerfile missing libnsl2 dependency"
+if ! grep -q "cp -P /opt/oracle/instantclient/lib/libnsl" build/Dockerfile 2>/dev/null; then
+    echo "✗ Dockerfile missing libnsl configuration"
     exit 1
 fi
 
-echo "✓ Dockerfile configured with OCI and libnsl2"
+echo "✓ Dockerfile configured with Oracle Instant Client 21.x and libnsl"
 
 # Build Kafka Connect image
 echo ""
-echo "Building Kafka Connect image (this will take 5-10 minutes due to 2GB OCI libraries)..."
-./build-kafka-connect-dbz-oracle-xs-plugins.sh
+echo "Building Kafka Connect image (this will take 8-12 minutes - uploading ~925MB)..."
+if [ "$EXEC_MODE" = "local" ]; then
+    bash "${SCRIPT_DIR}/build-kafka-connect-dbz-oracle-xs-plugins.sh"
+else
+    bash <(curl -s "${GITHUB_RAW_BASE}/build-kafka-connect-dbz-oracle-xs-plugins.sh")
+fi
 
 echo ""
 echo "=== Build Complete ==="
 echo ""
-echo "Deploy Kafka Connect:"
-echo "  oc apply -f kafka-connect.yaml"
+echo "Next step: Deploy Kafka Connect and XStreams connector"
+echo "  oc apply -f https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/kafka-connect.yaml"
 echo ""
 echo "Wait for Kafka Connect to be ready:"
 echo "  oc get pods -n ${NAMESPACE} -w -l strimzi.io/cluster=debezium-connect"
+echo ""
