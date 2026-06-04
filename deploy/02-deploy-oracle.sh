@@ -48,7 +48,7 @@ fi
 # Deploy Oracle database
 echo ""
 echo "Deploying Oracle database..."
-oc apply -f oracle-complete.yaml
+oc apply -f https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/oracle-complete.yaml
 
 echo ""
 echo "=== Oracle Database Deployment Initiated ==="
