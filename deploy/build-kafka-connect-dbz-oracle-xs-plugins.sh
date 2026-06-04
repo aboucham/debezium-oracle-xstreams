@@ -107,6 +107,31 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
             echo ""
             echo "Build is running, following logs..."
             oc logs -f build/${BUILD_ID} -n ${NAMESPACE}
+
+            # After logs finish, wait for build to complete
+            echo ""
+            echo "Waiting for build to complete (pushing image)..."
+            WAIT_TIMEOUT=300  # 5 minutes for image push
+            WAIT_ELAPSED=0
+            while [ $WAIT_ELAPSED -lt $WAIT_TIMEOUT ]; do
+                CURRENT_PHASE=$(oc get build ${BUILD_ID} -n ${NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null)
+                if [ "$CURRENT_PHASE" = "Complete" ]; then
+                    echo "✓ Build completed successfully!"
+                    break
+                elif [ "$CURRENT_PHASE" = "Failed" ] || [ "$CURRENT_PHASE" = "Error" ] || [ "$CURRENT_PHASE" = "Cancelled" ]; then
+                    echo "✗ Build failed with status: ${CURRENT_PHASE}"
+                    exit 1
+                fi
+                echo -n "."
+                sleep 5
+                WAIT_ELAPSED=$((WAIT_ELAPSED + 5))
+            done
+
+            if [ $WAIT_ELAPSED -ge $WAIT_TIMEOUT ]; then
+                echo ""
+                echo "⚠ Build did not complete within ${WAIT_TIMEOUT} seconds"
+                exit 1
+            fi
             break
             ;;
         "Complete")
@@ -137,20 +162,19 @@ if [ $ELAPSED -ge $TIMEOUT ]; then
     echo "You can:"
     echo "  1. Check build status: oc get build ${BUILD_ID} -n ${NAMESPACE}"
     echo "  2. View build logs: oc logs -f build/${BUILD_ID} -n ${NAMESPACE}"
-    echo "  3. Run troubleshooting: ./troubleshoot-build.sh"
-    echo "  4. Cancel and retry: oc cancel-build ${BUILD_ID} -n ${NAMESPACE} && ./build-kafka-connect-dbz-oracle-xs-plugins.sh"
+    echo "  3. Cancel and retry: oc cancel-build ${BUILD_ID} -n ${NAMESPACE}"
     exit 1
 fi
 
-# Check final build status
+# Verify final build status
 FINAL_PHASE=$(oc get build ${BUILD_ID} -n ${NAMESPACE} -o jsonpath='{.status.phase}')
 if [ "$FINAL_PHASE" = "Complete" ]; then
     echo ""
-    echo "=== Build complete ==="
+    echo "=== Build Complete ==="
     echo "Build ID: ${BUILD_ID}"
     echo "Image: image-registry.openshift-image-registry.svc:5000/${NAMESPACE}/${BUILD_NAME}:latest"
     echo ""
-    echo "Next step: oc apply -f kafka-connect.yaml"
+    echo "✓ Kafka Connect image built successfully with Oracle Instant Client 21.x"
 else
     echo ""
     echo "Build finished with status: ${FINAL_PHASE}"
