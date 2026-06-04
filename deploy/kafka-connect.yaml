@@ -30,13 +30,25 @@ spec:
   jvmOptions:
     javaSystemProperties:
       - name: java.library.path
-        value: /opt/oracle/lib
+        value: /opt/oracle/instantclient/lib
 
   # Template to add environment variables for OCI support
   template:
     connectContainer:
       env:
         - name: LD_LIBRARY_PATH
-          value: /opt/oracle/lib:$LD_LIBRARY_PATH
+          value: /opt/oracle/instantclient/lib:$LD_LIBRARY_PATH
         - name: ORACLE_HOME
-          value: /opt/oracle
+          value: /opt/oracle/instantclient
+        - name: NLS_LANG
+          value: AMERICAN_AMERICA.AL32UTF8
+        - name: TNS_ADMIN
+          value: /mnt/tns-admin
+      volumeMounts:
+        - name: tns-config
+          mountPath: /mnt/tns-admin
+    pod:
+      volumes:
+        - name: tns-config
+          configMap:
+            name: oracle-tns-config

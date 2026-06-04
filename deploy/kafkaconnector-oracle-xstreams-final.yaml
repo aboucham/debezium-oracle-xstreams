@@ -9,9 +9,10 @@ spec:
   class: io.debezium.connector.oracle.OracleConnector
   tasksMax: 1
   config:
-    # Database connection - Using OCI driver with TNS
-    # With TNS configured, we can use the simple TNS name
-    database.url: "jdbc:oracle:oci:@ORCLCDB"
+    # Database connection - Using full connection descriptor (bypasses tnsnames.ora)
+    # Must use jdbc:oracle:oci:@ prefix for XStreams (NOT jdbc:oracle:thin:@)
+    # Full descriptor directly specifies HOST, PORT, and SERVICE_NAME
+    database.url: "jdbc:oracle:oci:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=oracle-db)(PORT=1521))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=ORCLCDB)))"
     database.user: c##dbzuser
     database.password: dbz
     database.dbname: ORCLCDB

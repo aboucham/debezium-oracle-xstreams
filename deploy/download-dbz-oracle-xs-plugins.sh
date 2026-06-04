@@ -78,45 +78,52 @@ cd ../../..
 # 2.7. Create Dockerfile in build directory
 echo "Creating Dockerfile in build directory..."
 
-# Check if OCI libraries exist (for XStreams support)
-if [ -d "build/oci-libs" ] && [ "$(ls -A build/oci-libs)" ]; then
-    echo "✓ OCI libraries detected - creating Dockerfile with XStreams support"
+# Check if minimal Oracle Instant Client exists (for XStreams support)
+if [ -d "build/oracle-instantclient" ] && [ "$(ls -A build/oracle-instantclient)" ]; then
+    echo "✓ Oracle Instant Client detected - creating Dockerfile with XStreams support"
     cat > build/Dockerfile <<'EOF'
 FROM registry.redhat.io/amq-streams/kafka-42-rhel9:3.2.0
 
 USER root:root
 
-# Install system dependencies required by OCI libraries
-# libnsl2 is required by libocijdbc19.so but not included by default in RHEL 9
-RUN microdnf install -y libnsl2 && microdnf clean all
+# Install system dependencies required by OCI
+# libaio is required for Oracle OCI async I/O operations
+RUN microdnf install -y libaio && microdnf clean all
 
-# Create the target directory path matching Strimzi expectations
+# Create directory structure for Kafka Connect plugins
 RUN mkdir -p /opt/kafka/plugins/
 
-# Create directory for OCI native libraries
-RUN mkdir -p /opt/oracle/lib
+# Create Oracle Instant Client directory
+RUN mkdir -p /opt/oracle/instantclient
 
-# Copy the staged build layout artifacts recursively into the root plugin directory path
+# Copy Kafka Connect plugins (Debezium, JDBC drivers, etc.)
 COPY ./plugins/ /opt/kafka/plugins/
 
-# Copy OCI native libraries for XStreams support
-COPY ./oci-libs/ /opt/oracle/lib/
+# Copy minimal Oracle Instant Client structure
+# This includes: lib/, network/admin/, nls/data/, rdbms/mesg/, etc.
+COPY ./oracle-instantclient/ /opt/oracle/instantclient/
 
-# Set up library path for OCI
-ENV LD_LIBRARY_PATH=/opt/oracle/lib:$LD_LIBRARY_PATH
-ENV ORACLE_HOME=/opt/oracle
+# Copy libnsl.so.1 from Instant Client to system library path if exists
+# Oracle OCI requires libnsl.so.1 which is not in RHEL 9 by default
+RUN cp -P /opt/oracle/instantclient/lib/libnsl*.so* /usr/lib64/ 2>/dev/null || true
 
-# Establish standard security file-system permissions for execution
+# Set Oracle environment variables
+ENV ORACLE_HOME=/opt/oracle/instantclient
+ENV TNS_ADMIN=/opt/oracle/instantclient/network/admin
+ENV LD_LIBRARY_PATH=/opt/oracle/instantclient/lib:$LD_LIBRARY_PATH
+ENV NLS_LANG=AMERICAN_AMERICA.AL32UTF8
+
+# Set file permissions
 RUN chmod -R 755 /opt/kafka/plugins/ && \
-    chmod -R 755 /opt/oracle/lib/
+    chmod -R 755 /opt/oracle/instantclient/
 
-# Pivot context parameters safely back onto the default Strimzi unprivileged system UID
+# Switch back to unprivileged user
 USER 1001
 EOF
-    echo "✓ Dockerfile created with OCI/XStreams support (includes libnsl)"
+    echo "✓ Dockerfile created with Oracle Instant Client for XStreams support"
 else
-    echo "⚠ OCI libraries not found - creating Dockerfile without XStreams support"
-    echo "  For XStreams: run ./extract-oci-libraries.sh before this script"
+    echo "⚠ Oracle Instant Client not found - creating Dockerfile without XStreams support"
+    echo "  For XStreams: run ./deploy/extract-oci-minimal.sh before this script"
     cat > build/Dockerfile <<'EOF'
 FROM registry.redhat.io/amq-streams/kafka-42-rhel9:3.2.0
 

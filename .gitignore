@@ -9,7 +9,12 @@ build/
 # OCI native libraries (extracted from Oracle pod)
 oci-libs/
 oci-libs-temp/
+oracle-minimal/
 *.tar.gz
+
+# Oracle Instant Client downloads
+instantclient-*.zip
+instantclient_*/
 
 # Temporary files
 *.tmp
