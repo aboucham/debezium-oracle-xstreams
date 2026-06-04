@@ -10,6 +10,55 @@ echo " Debezium Oracle XStreams Deployment"
 echo "=========================================="
 echo ""
 
+# Verify required secrets exist before starting deployment
+echo "Checking prerequisites..."
+MISSING_SECRETS=0
+
+if ! oc get secret registry-redhat-io -n ${NAMESPACE} >/dev/null 2>&1; then
+    echo "  ✗ Missing secret: registry-redhat-io"
+    echo "    Required to pull AMQ Streams base image from registry.redhat.io"
+    MISSING_SECRETS=1
+else
+    echo "  ✓ Secret registry-redhat-io exists"
+fi
+
+if ! oc get secret quay-pull-secret -n ${NAMESPACE} >/dev/null 2>&1; then
+    echo "  ✗ Missing secret: quay-pull-secret"
+    echo "    Required to pull Oracle database image from quay.io"
+    MISSING_SECRETS=1
+else
+    echo "  ✓ Secret quay-pull-secret exists"
+fi
+
+if [ $MISSING_SECRETS -eq 1 ]; then
+    echo ""
+    echo "ERROR: Required secrets are missing!"
+    echo ""
+    echo "Please create the missing secrets before running this script:"
+    echo ""
+    echo "# Create Red Hat registry pull secret"
+    echo "oc create secret docker-registry registry-redhat-io \\"
+    echo "  --docker-server=registry.redhat.io \\"
+    echo "  --docker-username=YOUR_REDHAT_USERNAME \\"
+    echo "  --docker-password=YOUR_REDHAT_PASSWORD \\"
+    echo "  --docker-email=YOUR_EMAIL \\"
+    echo "  -n ${NAMESPACE}"
+    echo ""
+    echo "# Create Quay.io pull secret"
+    echo "oc create secret docker-registry quay-pull-secret \\"
+    echo "  --docker-server=quay.io \\"
+    echo "  --docker-username=YOUR_QUAY_USERNAME \\"
+    echo "  --docker-password=YOUR_QUAY_PASSWORD \\"
+    echo "  --docker-email=YOUR_EMAIL \\"
+    echo "  -n ${NAMESPACE}"
+    echo ""
+    echo "For more information, see:"
+    echo "https://github.com/aboucham/debezium-oracle-xstreams#required-secrets-create-before-deployment"
+    exit 1
+fi
+
+echo ""
+
 # Detect if running locally or remotely
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
 if [ -f "${SCRIPT_DIR}/01-deploy-kafka.sh" ]; then
