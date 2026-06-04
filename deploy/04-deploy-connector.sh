@@ -17,31 +17,99 @@ oc project ${NAMESPACE} 2>/dev/null || {
 echo "Deploying Kafka Connect cluster..."
 oc apply -f https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/kafka-connect.yaml
 
-# Wait for Kafka Connect to be ready
+# Wait for KafkaConnect resource to be ready first
 echo ""
-echo "Waiting for Kafka Connect pod to be ready (may take 5-10 minutes)..."
+echo "Waiting for KafkaConnect resource to be reconciled..."
+KC_READY=""
+for i in {1..60}; do
+    KC_READY=$(oc get kafkaconnect debezium-connect -n ${NAMESPACE} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
+    if [ "$KC_READY" = "True" ]; then
+        echo "✓ KafkaConnect resource is ready"
+        break
+    fi
+
+    # Show what's happening every 10 seconds
+    if [ $((i % 2)) -eq 0 ]; then
+        KC_STATUS=$(oc get kafkaconnect debezium-connect -n ${NAMESPACE} -o jsonpath='{.status.conditions[?(@.type=="Ready")].message}' 2>/dev/null || echo "Waiting for operator...")
+        echo "  Status: ${KC_STATUS}"
+    fi
+    sleep 5
+done
+
+if [ "$KC_READY" != "True" ]; then
+    echo "⚠ KafkaConnect resource not ready after 5 minutes"
+    echo ""
+    echo "Debug information:"
+    oc get kafkaconnect debezium-connect -n ${NAMESPACE}
+    echo ""
+    oc describe kafkaconnect debezium-connect -n ${NAMESPACE} | tail -20
+    echo ""
+    echo "Continuing to wait for pod..."
+fi
+
+# Wait for Kafka Connect pod to be ready
+echo ""
+echo "Waiting for Kafka Connect pod to be created and ready..."
 CONNECT_POD=""
 for i in {1..120}; do
     CONNECT_POD=$(oc get pods -n ${NAMESPACE} -l strimzi.io/cluster=debezium-connect -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
     if [ -n "$CONNECT_POD" ]; then
         POD_STATUS=$(oc get pod ${CONNECT_POD} -n ${NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+        echo "  Pod ${CONNECT_POD} status: ${POD_STATUS}"
+
         if [ "$POD_STATUS" = "Running" ]; then
             # Check if pod is actually ready (not just running)
             POD_READY=$(oc get pod ${CONNECT_POD} -n ${NAMESPACE} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
             if [ "$POD_READY" = "True" ]; then
                 echo "✓ Kafka Connect pod ${CONNECT_POD} is ready"
                 break
+            else
+                echo "  Pod is running but not ready yet..."
             fi
+        elif [ "$POD_STATUS" = "Pending" ]; then
+            # Show why it's pending
+            PENDING_REASON=$(oc get pod ${CONNECT_POD} -n ${NAMESPACE} -o jsonpath='{.status.conditions[?(@.type=="PodScheduled")].message}' 2>/dev/null || echo "")
+            if [ -n "$PENDING_REASON" ]; then
+                echo "  Reason: ${PENDING_REASON}"
+            fi
+        elif [ "$POD_STATUS" = "Failed" ] || [ "$POD_STATUS" = "CrashLoopBackOff" ]; then
+            echo "✗ Pod failed to start"
+            oc describe pod ${CONNECT_POD} -n ${NAMESPACE} | tail -30
+            exit 1
+        fi
+    else
+        # Show progress every 10 iterations
+        if [ $((i % 10)) -eq 0 ]; then
+            echo "  Waiting for Kafka Connect pod to be created... (${i}/120)"
+            # Check if there are any pods being created
+            POD_COUNT=$(oc get pods -n ${NAMESPACE} -l strimzi.io/cluster=debezium-connect --no-headers 2>/dev/null | wc -l)
+            echo "  Pods with label strimzi.io/cluster=debezium-connect: ${POD_COUNT}"
         fi
     fi
-    echo "  Waiting for Kafka Connect pod... (${i}/120)"
     sleep 5
 done
 
-if [ -z "$CONNECT_POD" ] || [ "$POD_STATUS" != "Running" ]; then
-    echo "✗ Kafka Connect pod not ready after 10 minutes"
-    echo "Check deployment: oc get pods -n ${NAMESPACE} -l strimzi.io/cluster=debezium-connect"
-    echo "Check logs: oc logs -f ${CONNECT_POD} -n ${NAMESPACE}"
+if [ -z "$CONNECT_POD" ]; then
+    echo "✗ Kafka Connect pod was not created after 10 minutes"
+    echo ""
+    echo "Troubleshooting:"
+    echo "1. Check KafkaConnect resource:"
+    echo "   oc get kafkaconnect debezium-connect -n ${NAMESPACE}"
+    echo "   oc describe kafkaconnect debezium-connect -n ${NAMESPACE}"
+    echo ""
+    echo "2. Check if Strimzi operator is running:"
+    echo "   oc get pods -A | grep strimzi | grep operator"
+    echo ""
+    echo "3. Check events:"
+    echo "   oc get events -n ${NAMESPACE} --sort-by='.lastTimestamp' | tail -20"
+    exit 1
+fi
+
+if [ "$POD_STATUS" != "Running" ]; then
+    echo "✗ Kafka Connect pod not ready after 10 minutes (status: ${POD_STATUS})"
+    echo ""
+    echo "Pod details:"
+    oc describe pod ${CONNECT_POD} -n ${NAMESPACE} | tail -30
     exit 1
 fi
 

@@ -17,6 +17,11 @@ oc new-project ${NAMESPACE} 2>/dev/null || oc project ${NAMESPACE}
 echo "Deploying Kafka cluster (KRaft mode)..."
 oc apply -f https://raw.githubusercontent.com/aboucham/strimzi-kafka-tutorial/refs/heads/main/kafka/kafka-cluster-kraft-full.yaml
 
+# Enable auto-create topics for Debezium connector
+echo "Enabling auto-create topics..."
+sleep 2  # Give the operator a moment to process the Kafka CR
+oc patch kafka kafka-cluster -n ${NAMESPACE} --type merge -p '{"spec":{"kafka":{"config":{"auto.create.topics.enable":"true"}}}}' || echo "  Will retry after Kafka is ready"
+
 # Auto-detect OpenShift cluster domain
 echo ""
 echo "Auto-detecting OpenShift cluster domain..."
