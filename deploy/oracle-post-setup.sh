@@ -22,7 +22,7 @@ echo ""
 
 # Check if database is ready
 echo "Checking if Oracle Database is ready..."
-if ! oc logs ${ORACLE_POD} -n ${NAMESPACE} 2>/dev/null | grep -q "DATABASE IS READY TO USE"; then
+if ! oc logs ${ORACLE_POD} -n ${NAMESPACE} 2>/dev/null | grep -q "DATABASE IS READY TO USE!"; then
     echo ""
     echo "⚠ Database is NOT ready yet"
     echo ""

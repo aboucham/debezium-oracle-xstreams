@@ -159,7 +159,7 @@ if [ "$STEP_1_STATUS" = "success" ] && [ "$STEP_2_STATUS" = "success" ] && [ "$S
     ORACLE_POD=$(oc get pods -n ${NAMESPACE} -l app=oracle-db -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
 
     if [ -n "$ORACLE_POD" ]; then
-        if oc logs ${ORACLE_POD} -n ${NAMESPACE} 2>/dev/null | grep -q "DATABASE IS READY TO USE"; then
+        if oc logs ${ORACLE_POD} -n ${NAMESPACE} 2>/dev/null | grep -q "DATABASE IS READY TO USE!"; then
             echo "✓ Oracle Database is READY!"
             echo ""
             echo "Running post-deployment setup..."

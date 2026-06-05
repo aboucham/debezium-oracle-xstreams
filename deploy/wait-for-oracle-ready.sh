@@ -49,7 +49,7 @@ DB_READY=false
 
 while [ $ELAPSED -lt $MAX_WAIT ]; do
     # Check if database is ready by looking for the ready message in logs
-    if oc logs ${ORACLE_POD} -n ${NAMESPACE} 2>/dev/null | grep -q "DATABASE IS READY TO USE"; then
+    if oc logs ${ORACLE_POD} -n ${NAMESPACE} 2>/dev/null | grep -q "DATABASE IS READY TO USE!"; then
         echo "✓ Database initialization complete!"
         DB_READY=true
         break
