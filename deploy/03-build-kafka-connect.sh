@@ -22,39 +22,27 @@ oc project ${NAMESPACE} 2>/dev/null || {
     exit 1
 }
 
-# Wait for Oracle pod to be ready
-echo "Waiting for Oracle database pod to be ready..."
-ORACLE_POD=""
-for i in {1..60}; do
-    ORACLE_POD=$(oc get pods -n ${NAMESPACE} -l app=oracle-db -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-    if [ -n "$ORACLE_POD" ]; then
-        POD_STATUS=$(oc get pod ${ORACLE_POD} -n ${NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-        if [ "$POD_STATUS" = "Running" ]; then
-            # Wait a bit more for Oracle to be fully initialized
-            echo "✓ Oracle pod ${ORACLE_POD} is running, waiting for initialization..."
-            sleep 10
+# Wait for Oracle pod to be Running (to extract instantclient files)
+echo "Checking Oracle pod status..."
+ORACLE_POD=$(oc get pods -n ${NAMESPACE} -l app=oracle-db -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
 
-            # Grant CREATE TABLE privilege for LogMiner
-            echo "Granting CREATE TABLE privilege to c##dbzuser (required for LogMiner)..."
-            oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOF'
-GRANT CREATE TABLE TO c##dbzuser;
-EXIT;
-EOF
-" > /dev/null 2>&1 || echo "  Warning: Could not grant privilege (may already exist)"
-            echo "✓ LogMiner prerequisites configured"
-
-            break
-        fi
-    fi
-    echo "  Waiting for Oracle pod... (${i}/60)"
-    sleep 5
-done
-
-if [ -z "$ORACLE_POD" ] || [ "$POD_STATUS" != "Running" ]; then
-    echo "✗ Oracle pod not ready after 5 minutes"
-    echo "Check Oracle deployment: oc get pods -n ${NAMESPACE} -l app=oracle-db"
+if [ -z "$ORACLE_POD" ]; then
+    echo "✗ Oracle pod not found"
+    echo "Run step 1 first: ./01-deploy-oracle.sh"
     exit 1
 fi
+
+POD_STATUS=$(oc get pod ${ORACLE_POD} -n ${NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+if [ "$POD_STATUS" != "Running" ]; then
+    echo "✗ Oracle pod not running (status: ${POD_STATUS})"
+    echo "Wait for pod to be Running before building"
+    exit 1
+fi
+
+echo "✓ Oracle pod ${ORACLE_POD} is Running"
+echo ""
+echo "Note: We only need the pod running to extract instantclient files."
+echo "Database initialization can continue in the background."
 
 # Download Oracle Instant Client 21.x and Debezium components
 echo ""

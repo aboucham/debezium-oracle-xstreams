@@ -111,17 +111,17 @@ exec_script() {
     return 0  # Always return success to continue execution
 }
 
-# Step 1: Deploy Kafka and Console
-exec_script "01-deploy-kafka.sh" "1" "Step 1: Deploying Kafka Cluster and Console UI"
+# Step 1: Deploy Oracle Database (FIRST - initialize in background)
+exec_script "01-deploy-oracle.sh" "1" "Step 1: Deploying Oracle Database"
 
-# Step 2: Deploy Oracle Database
-exec_script "02-deploy-oracle.sh" "2" "Step 2: Deploying Oracle Database"
+# Step 2: Deploy Kafka and Console (while Oracle initializes)
+exec_script "02-deploy-kafka.sh" "2" "Step 2: Deploying Kafka Cluster and Console UI"
 
-# Step 3: Build Kafka Connect
+# Step 3: Build Kafka Connect (while Oracle initializes)
 exec_script "03-build-kafka-connect.sh" "3" "Step 3: Building Kafka Connect with Oracle Instant Client 21.x"
 
 # Step 4: Deploy Connector
-exec_script "04-deploy-connector.sh" "4" "Step 4: Deploying Oracle XStreams Connector"
+exec_script "04-deploy-connector.sh" "4" "Step 4: Deploying LogMiner Connector"
 
 # Deployment Summary
 echo ""
@@ -129,8 +129,8 @@ echo "=========================================="
 echo " Deployment Summary"
 echo "=========================================="
 echo ""
-echo "Step 1 - Kafka Cluster:        ${STEP_1_STATUS}"
-echo "Step 2 - Oracle Database:      ${STEP_2_STATUS}"
+echo "Step 1 - Oracle Database:      ${STEP_1_STATUS}"
+echo "Step 2 - Kafka Cluster:        ${STEP_2_STATUS}"
 echo "Step 3 - Build Kafka Connect:  ${STEP_3_STATUS}"
 echo "Step 4 - Deploy Connector:     ${STEP_4_STATUS}"
 echo ""
@@ -149,11 +149,60 @@ if [ "$STEP_1_STATUS" = "success" ] && [ "$STEP_2_STATUS" = "success" ] && [ "$S
     echo " Deployment Complete! 🚀"
     echo "=========================================="
     echo ""
+
+    # Check Oracle Database readiness
+    echo "=========================================="
+    echo " Checking Oracle Database Status"
+    echo "=========================================="
+    echo ""
+
+    ORACLE_POD=$(oc get pods -n ${NAMESPACE} -l app=oracle-db -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+
+    if [ -n "$ORACLE_POD" ]; then
+        if oc logs ${ORACLE_POD} -n ${NAMESPACE} 2>/dev/null | grep -q "DATABASE IS READY TO USE"; then
+            echo "✓ Oracle Database is READY!"
+            echo ""
+            echo "Running post-deployment setup..."
+
+            # Run oracle post-setup
+            if [ "$EXEC_MODE" = "local" ]; then
+                bash "${SCRIPT_DIR}/oracle-post-setup.sh"
+            else
+                bash <(curl -s "${GITHUB_RAW_BASE}/oracle-post-setup.sh")
+            fi
+
+            ORACLE_READY=true
+        else
+            echo "⏳ Oracle Database is still initializing..."
+            echo ""
+            echo "The database will be ready in approximately 2-3 more minutes."
+            echo ""
+            echo "To check progress:"
+            echo "  oc logs -f ${ORACLE_POD} -n ${NAMESPACE}"
+            echo ""
+            echo "Look for: 'DATABASE IS READY TO USE!'"
+            echo ""
+            echo "Once ready, run this to complete setup:"
+            echo "  ./deploy/oracle-post-setup.sh"
+            echo ""
+            ORACLE_READY=false
+        fi
+    else
+        echo "⚠ Could not check Oracle status"
+        ORACLE_READY=false
+    fi
+
+    echo ""
     echo "=========================================="
     echo " Your Journey: From LogMiner to XStream"
     echo "=========================================="
     echo ""
-    echo "STEP 1: Test LogMiner CDC (Default - Works Immediately)"
+
+    if [ "$ORACLE_READY" = "true" ]; then
+        echo "STEP 1: Test LogMiner CDC (Ready to Start!)"
+    else
+        echo "STEP 1: Test LogMiner CDC (Wait for Oracle, then start)"
+    fi
     echo "────────────────────────────────────────────────────────"
     echo "Create CUSTOMERS table and insert sample data:"
     echo ""

@@ -6,7 +6,7 @@ NAMESPACE="strimzi"
 KAFKA_CR_NAME="kafka-cluster"
 KAFKA_LISTENER_NAME="plain"
 
-echo "=== Step 1: Deploy Kafka Cluster and Console UI ==="
+echo "=== Step 2: Deploy Kafka Cluster and Console UI ==="
 echo ""
 
 # Create namespace

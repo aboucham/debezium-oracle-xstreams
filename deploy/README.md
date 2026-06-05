@@ -16,6 +16,28 @@ Follow these 4 steps to test CDC with LogMiner, then upgrade to XStream for bett
 
 ### STEP 1: Test LogMiner CDC (Default - Works Immediately)
 
+**Important: Wait for Oracle Database to be Ready**
+
+The Oracle pod may show "Running" but the database initialization takes **3-5 minutes**. You must wait for the database to be fully ready before proceeding.
+
+**Option 1: Use the wait script (Recommended)**
+```bash
+./deploy/wait-for-oracle-ready.sh
+```
+
+**Option 2: Check logs manually**
+```bash
+# Watch logs until you see "DATABASE IS READY TO USE!"
+oc logs -f $(oc get pods -n strimzi -l app=oracle-db -o jsonpath='{.items[0].metadata.name}') -n strimzi
+```
+
+Look for this message:
+```
+#########################
+DATABASE IS READY TO USE!
+#########################
+```
+
 **Prerequisites - Grant CREATE TABLE privilege (Required for LogMiner):**
 
 LogMiner needs to create a flush table (`LOG_MINING_FLUSH`). Grant the privilege:
@@ -29,6 +51,8 @@ EOF
 ```
 
 **Expected:** `Grant succeeded.`
+
+> **Note:** If you get `ORA-12154: TNS:could not resolve the connect identifier specified`, the database is not ready yet. Wait longer and try again.
 
 **Create CUSTOMERS table with sample data:**
 

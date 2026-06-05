@@ -5,7 +5,7 @@ set -e
 NAMESPACE="strimzi"
 SERVICE_ACCOUNT="oracle-sa"
 
-echo "=== Step 2: Deploy Oracle Database ==="
+echo "=== Step 1: Deploy Oracle Database ==="
 echo ""
 
 # Check if in correct namespace
@@ -51,16 +51,38 @@ echo "Deploying Oracle database..."
 oc apply -f https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/oracle-complete.yaml
 
 echo ""
-echo "=== Oracle Database Deployment Initiated ==="
+echo "Waiting for Oracle pod to be Running..."
+ORACLE_POD=""
+for i in {1..60}; do
+    ORACLE_POD=$(oc get pods -n ${NAMESPACE} -l app=oracle-db -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+    if [ -n "$ORACLE_POD" ]; then
+        POD_STATUS=$(oc get pod ${ORACLE_POD} -n ${NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+        if [ "$POD_STATUS" = "Running" ]; then
+            echo "✓ Oracle pod ${ORACLE_POD} is Running"
+            break
+        fi
+        echo "  Pod status: ${POD_STATUS} (attempt ${i}/60)"
+    else
+        echo "  Waiting for pod to be created... (${i}/60)"
+    fi
+    sleep 5
+done
+
+if [ -z "$ORACLE_POD" ] || [ "$POD_STATUS" != "Running" ]; then
+    echo "✗ Oracle pod not running after 5 minutes"
+    exit 1
+fi
+
 echo ""
-echo "Wait for Oracle pod to be ready (3-5 minutes):"
-echo "  oc get pods -n ${NAMESPACE} -w -l app=oracle-db"
+echo "=== Oracle Pod Deployed and Running ==="
 echo ""
-echo "Check deployment status:"
-echo "  oc get deployment oracle-db -n ${NAMESPACE}"
+echo "⚠ NOTE: Database is initializing in the background (3-5 minutes)"
+echo "The pod is running but the database is NOT ready yet."
 echo ""
-echo "Check logs:"
-echo "  oc logs -f deployment/oracle-db -n ${NAMESPACE}"
+echo "You can continue with the next steps while Oracle initializes."
 echo ""
-echo "Once running, verify service:"
-echo "  oc get svc oracle-db -n ${NAMESPACE}"
+echo "To check database initialization progress:"
+echo "  oc logs -f ${ORACLE_POD} -n ${NAMESPACE}"
+echo ""
+echo "Look for this message to confirm database is ready:"
+echo "  'DATABASE IS READY TO USE!'"
