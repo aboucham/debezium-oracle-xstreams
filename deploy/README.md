@@ -16,6 +16,20 @@ Follow these 4 steps to test CDC with LogMiner, then upgrade to XStream for bett
 
 ### STEP 1: Test LogMiner CDC (Default - Works Immediately)
 
+**Prerequisites - Grant CREATE TABLE privilege (Required for LogMiner):**
+
+LogMiner needs to create a flush table (`LOG_MINING_FLUSH`). Grant the privilege:
+
+```bash
+oc exec $(oc get pods -n strimzi -l app=oracle-db -o jsonpath='{.items[0].metadata.name}') -n strimzi -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOF'
+GRANT CREATE TABLE TO c##dbzuser;
+EXIT;
+EOF
+"
+```
+
+**Expected:** `Grant succeeded.`
+
 **Create CUSTOMERS table with sample data:**
 
 ```bash

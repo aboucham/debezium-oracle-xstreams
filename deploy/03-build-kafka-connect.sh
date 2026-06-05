@@ -33,6 +33,16 @@ for i in {1..60}; do
             # Wait a bit more for Oracle to be fully initialized
             echo "✓ Oracle pod ${ORACLE_POD} is running, waiting for initialization..."
             sleep 10
+
+            # Grant CREATE TABLE privilege for LogMiner
+            echo "Granting CREATE TABLE privilege to c##dbzuser (required for LogMiner)..."
+            oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOF'
+GRANT CREATE TABLE TO c##dbzuser;
+EXIT;
+EOF
+" > /dev/null 2>&1 || echo "  Warning: Could not grant privilege (may already exist)"
+            echo "✓ LogMiner prerequisites configured"
+
             break
         fi
     fi
