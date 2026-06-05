@@ -87,11 +87,43 @@ EXIT;
 EOF
 "
 
+# Restart connector to pick up new privileges
+echo ""
+echo "Restarting LogMiner connector to apply new privileges..."
+
+if oc get kafkaconnector oracle-logminer-connector -n ${NAMESPACE} >/dev/null 2>&1; then
+    echo "  Deleting existing connector..."
+    oc delete kafkaconnector oracle-logminer-connector -n ${NAMESPACE}
+
+    echo "  Waiting for connector to be removed..."
+    sleep 5
+
+    echo "  Creating connector with new privileges..."
+    oc apply -f https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/kafkaconnector-oracle-logminer-final.yaml
+
+    echo "  Waiting for connector to start..."
+    sleep 10
+
+    # Check connector status
+    CONNECTOR_STATE=$(oc get kafkaconnector oracle-logminer-connector -n ${NAMESPACE} -o jsonpath='{.status.connectorStatus.connector.state}' 2>/dev/null || echo "UNKNOWN")
+    TASK_STATE=$(oc get kafkaconnector oracle-logminer-connector -n ${NAMESPACE} -o jsonpath='{.status.connectorStatus.tasks[0].state}' 2>/dev/null || echo "UNKNOWN")
+
+    if [ "$CONNECTOR_STATE" = "RUNNING" ] && [ "$TASK_STATE" = "RUNNING" ]; then
+        echo "✓ Connector restarted successfully"
+    else
+        echo "⚠ Connector state: ${CONNECTOR_STATE}, Task state: ${TASK_STATE}"
+        echo "  Check status: oc get kafkaconnector oracle-logminer-connector -n ${NAMESPACE}"
+    fi
+else
+    echo "  No connector found - will be created when you deploy it"
+fi
+
 echo ""
 echo "=== Oracle Setup Complete ==="
 echo ""
 echo "✓ Database is ready for CDC operations"
 echo "✓ LogMiner prerequisites configured"
+echo "✓ Connector restarted with new privileges"
 echo ""
 echo "You can now proceed with testing:"
 echo "  See README.md - STEP 1: Test LogMiner CDC"
