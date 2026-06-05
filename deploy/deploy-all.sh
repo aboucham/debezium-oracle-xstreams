@@ -183,7 +183,11 @@ if [ "$STEP_1_STATUS" = "success" ] && [ "$STEP_2_STATUS" = "success" ] && [ "$S
             echo "Look for: 'DATABASE IS READY TO USE!'"
             echo ""
             echo "Once ready, run this to complete setup:"
-            echo "  ./deploy/oracle-post-setup.sh"
+            if [ "$EXEC_MODE" = "local" ]; then
+                echo "  ./deploy/oracle-post-setup.sh"
+            else
+                echo "  bash <(curl -s ${GITHUB_RAW_BASE}/oracle-post-setup.sh)"
+            fi
             echo ""
             ORACLE_READY=false
         fi
