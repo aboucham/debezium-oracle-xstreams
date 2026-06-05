@@ -55,21 +55,32 @@ fi
 echo "✓ Database connection verified"
 echo ""
 
-# Grant CREATE TABLE privilege for LogMiner
-echo "Granting CREATE TABLE privilege to c##dbzuser (required for LogMiner)..."
+# Grant privileges for LogMiner
+echo "Granting LogMiner privileges to c##dbzuser..."
 oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOF'
+-- Required for LogMiner to create flush table
 GRANT CREATE TABLE TO c##dbzuser;
+
+-- Required for LogMiner streaming
+GRANT EXECUTE_CATALOG_ROLE TO c##dbzuser;
+GRANT SELECT_CATALOG_ROLE TO c##dbzuser;
+GRANT SELECT ANY TRANSACTION TO c##dbzuser;
+GRANT LOGMINING TO c##dbzuser;
 EOF
 "
 
-echo "✓ CREATE TABLE privilege granted"
+echo "✓ LogMiner privileges granted"
 echo ""
 
 # Verify privileges
 echo "Verifying c##dbzuser privileges:"
 oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOF'
 SET PAGESIZE 50
+PROMPT System Privileges:
 SELECT privilege FROM dba_sys_privs WHERE grantee = 'C##DBZUSER' ORDER BY privilege;
+PROMPT
+PROMPT Roles:
+SELECT granted_role FROM dba_role_privs WHERE grantee = 'C##DBZUSER' ORDER BY granted_role;
 EXIT;
 EOF
 "
