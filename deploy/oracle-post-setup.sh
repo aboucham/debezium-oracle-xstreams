@@ -58,8 +58,10 @@ echo ""
 # Grant privileges for LogMiner
 echo "Granting LogMiner privileges to c##dbzuser..."
 oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOF'
--- Required for LogMiner to create flush table
+-- Required for LogMiner to create flush table and other objects
 GRANT CREATE TABLE TO c##dbzuser;
+GRANT RESOURCE TO c##dbzuser;
+GRANT CONNECT TO c##dbzuser;
 
 -- Required for LogMiner streaming
 GRANT EXECUTE_CATALOG_ROLE TO c##dbzuser;

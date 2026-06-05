@@ -20,8 +20,10 @@ echo "Oracle pod: ${ORACLE_POD}"
 echo ""
 
 oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOF'
--- Required for LogMiner to create flush table
+-- Required for LogMiner to create flush table and other objects
 GRANT CREATE TABLE TO c##dbzuser;
+GRANT RESOURCE TO c##dbzuser;
+GRANT CONNECT TO c##dbzuser;
 
 -- Required for LogMiner streaming
 GRANT EXECUTE_CATALOG_ROLE TO c##dbzuser;
@@ -44,11 +46,15 @@ echo ""
 echo "✓ LogMiner privileges granted to c##dbzuser"
 echo ""
 echo "Granted privileges:"
-echo "  - CREATE TABLE (for LOG_MINING_FLUSH table)"
-echo "  - EXECUTE_CATALOG_ROLE (to execute DBMS_LOGMNR)"
-echo "  - SELECT_CATALOG_ROLE (to query data dictionary)"
-echo "  - SELECT ANY TRANSACTION (to read transaction metadata)"
-echo "  - LOGMINING (direct log mining privilege)"
+echo "  System Privileges:"
+echo "    - CREATE TABLE (for LOG_MINING_FLUSH table)"
+echo "    - SELECT ANY TRANSACTION (read transaction metadata)"
+echo "    - LOGMINING (direct log mining privilege)"
+echo "  Roles:"
+echo "    - RESOURCE (create database objects)"
+echo "    - CONNECT (establish database connections)"
+echo "    - EXECUTE_CATALOG_ROLE (execute DBMS_LOGMNR)"
+echo "    - SELECT_CATALOG_ROLE (query data dictionary)"
 echo ""
 echo "Now restart the connector:"
 echo "  oc delete kafkaconnector oracle-logminer-connector -n ${NAMESPACE}"
