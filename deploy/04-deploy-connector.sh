@@ -137,25 +137,24 @@ else
     exit 1
 fi
 
-# Deploy connector
+# Deploy connector (LogMiner by default)
 echo ""
-echo "Deploying Oracle XStreams connector..."
-oc apply -f https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/kafkaconnector-oracle-xstreams-final.yaml
+echo "Deploying Oracle LogMiner connector (default)..."
+oc apply -f https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/kafkaconnector-oracle-logminer-final.yaml
 
 echo ""
 echo "=== Connector Deployed ==="
 echo ""
 echo "Monitor connector status:"
-echo "  oc get kafkaconnector oracle-xstreams-connector -n ${NAMESPACE}"
+echo "  oc get kafkaconnector oracle-logminer-connector -n ${NAMESPACE}"
 echo ""
 echo "Watch connector logs:"
-echo "  oc logs -f ${CONNECT_POD} -n ${NAMESPACE} | grep -i xstream"
-echo ""
-echo "Check for success message:"
-echo "  'XstreamStreamingChangeEventSource - Connected to XStream outbound server'"
+echo "  oc logs -f ${CONNECT_POD} -n ${NAMESPACE} | grep -i logminer"
 echo ""
 echo "List created topics:"
-echo "  oc get kafkatopics -n ${NAMESPACE} | grep oracle-xstreams"
+echo "  oc get kafkatopics -n ${NAMESPACE} | grep oracle-logminer"
 echo ""
 echo "Verify connector is running:"
-echo "  oc get kafkaconnector oracle-xstreams-connector -n ${NAMESPACE} -o jsonpath='{.status.connectorStatus.connector.state}'"
+echo "  oc get kafkaconnector oracle-logminer-connector -n ${NAMESPACE} -o jsonpath='{.status.connectorStatus.connector.state}'"
+echo ""
+echo "Next: Create test table and verify CDC - see README.md"
