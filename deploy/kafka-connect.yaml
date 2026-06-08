@@ -42,13 +42,3 @@ spec:
           value: /opt/oracle/instantclient
         - name: NLS_LANG
           value: AMERICAN_AMERICA.AL32UTF8
-        - name: TNS_ADMIN
-          value: /mnt/tns-admin
-      volumeMounts:
-        - name: tns-config
-          mountPath: /mnt/tns-admin
-    pod:
-      volumes:
-        - name: tns-config
-          configMap:
-            name: oracle-tns-config
