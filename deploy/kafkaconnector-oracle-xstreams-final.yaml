@@ -1,13 +1,14 @@
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaConnector
 metadata:
-  name: oracle-xstreams-connector
+  name: oracle-xstream-connector
   namespace: strimzi
   labels:
     strimzi.io/cluster: debezium-connect
 spec:
   class: io.debezium.connector.oracle.OracleConnector
   tasksMax: 1
+  state: stopped
   config:
     # Database connection - Using full connection descriptor (bypasses tnsnames.ora)
     # Must use jdbc:oracle:oci:@ prefix for XStreams (NOT jdbc:oracle:thin:@)
@@ -22,7 +23,7 @@ spec:
     database.out.server.name: dbzxout
 
     # Topic prefix
-    topic.prefix: oracle-xstreams
+    topic.prefix: oracle-xstream
 
     # Schema and table filtering
     schema.include.list: C##DBZUSER
@@ -30,7 +31,7 @@ spec:
 
     # Schema history
     schema.history.internal.kafka.bootstrap.servers: kafka-cluster-kafka-bootstrap:9092
-    schema.history.internal.kafka.topic: schema-changes.oracle.xstreams
+    schema.history.internal.kafka.topic: schema-changes.oracle.xstream
 
     # Snapshot mode
     snapshot.mode: initial
