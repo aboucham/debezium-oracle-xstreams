@@ -11,6 +11,33 @@ echo " Switching from LogMiner to XStream"
 echo "=========================================="
 echo ""
 
+# Check XStream prerequisites
+echo "Checking XStream prerequisites..."
+ORACLE_POD=$(oc get pods -n ${NAMESPACE} -l app=oracle-db -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+
+if [ -z "$ORACLE_POD" ]; then
+    echo "✗ Oracle pod not found"
+    exit 1
+fi
+
+# Check if XStream outbound server exists
+XSTREAM_SERVER=$(oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "echo \"SELECT COUNT(*) FROM DBA_XSTREAM_OUTBOUND WHERE server_name = 'DBZXOUT';\" | sqlplus -s sys/top_secret@ORCLCDB as sysdba" 2>/dev/null | grep -E "^[0-9]+$" | head -1 || echo "0")
+
+if [ "$XSTREAM_SERVER" = "0" ] || [ -z "$XSTREAM_SERVER" ]; then
+    echo ""
+    echo "✗ XStream prerequisites NOT configured!"
+    echo ""
+    echo "XStream outbound server 'dbzxout' not found."
+    echo ""
+    echo "Run XStream setup first:"
+    echo "  bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/setup-xstream.sh)"
+    echo ""
+    exit 1
+fi
+
+echo "✓ XStream prerequisites configured"
+echo ""
+
 # Step 1: Stop LogMiner connector
 echo "Step 1: Stopping LogMiner connector..."
 if oc get kafkaconnector oracle-logminer-connector -n ${NAMESPACE} >/dev/null 2>&1; then
