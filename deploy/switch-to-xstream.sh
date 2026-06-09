@@ -21,7 +21,14 @@ if [ -z "$ORACLE_POD" ]; then
 fi
 
 # Check if XStream outbound server exists
-XSTREAM_SERVER=$(oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "echo \"SELECT COUNT(*) FROM DBA_XSTREAM_OUTBOUND WHERE server_name = 'DBZXOUT';\" | sqlplus -s sys/top_secret@ORCLCDB as sysdba" 2>/dev/null | grep -E "^[0-9]+$" | head -1 || echo "0")
+XSTREAM_SERVER=$(oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOFCHECK'
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SELECT COUNT(*) FROM DBA_XSTREAM_OUTBOUND WHERE server_name = 'DBZXOUT';
+EXIT;
+EOFCHECK
+" 2>/dev/null | tr -d ' ' | grep -E '^[0-9]+$' || echo "0")
 
 if [ "$XSTREAM_SERVER" = "0" ] || [ -z "$XSTREAM_SERVER" ]; then
     echo ""
@@ -35,7 +42,7 @@ if [ "$XSTREAM_SERVER" = "0" ] || [ -z "$XSTREAM_SERVER" ]; then
     exit 1
 fi
 
-echo "✓ XStream prerequisites configured"
+echo "✓ XStream prerequisites configured (found server: DBZXOUT)"
 echo ""
 
 # Step 1: Stop LogMiner connector

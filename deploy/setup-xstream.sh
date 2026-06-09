@@ -247,30 +247,46 @@ echo " Step 5: Create XStream Outbound Server"
 echo "=========================================="
 echo ""
 
-# Verify we can connect as c##dbzadmin
-echo "Verifying c##dbzadmin connection..."
-if ! oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "echo 'SELECT USER FROM DUAL;' | sqlplus -s c##dbzadmin/dbz@ORCLCDB" | grep -q "C##DBZADMIN"; then
-    echo "✗ Cannot connect as c##dbzadmin"
-    echo "Attempting to fix by resetting password..."
+# Check if DBZXOUT already exists (as SYS)
+echo "Checking if XStream outbound server already exists..."
+DBZXOUT_EXISTS=$(oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOFCHECK'
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SELECT COUNT(*) FROM DBA_XSTREAM_OUTBOUND WHERE server_name = 'DBZXOUT';
+EXIT;
+EOFCHECK
+" | tr -d ' ' | grep -E '^[0-9]+$' || echo "0")
 
-    oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOFFIX'
+if [ "$DBZXOUT_EXISTS" != "0" ] && [ -n "$DBZXOUT_EXISTS" ]; then
+    echo "✓ XStream outbound server DBZXOUT already exists"
+    echo "  Skipping creation..."
+    echo ""
+else
+    # Verify we can connect as c##dbzadmin
+    echo "Verifying c##dbzadmin connection..."
+    if ! oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "echo 'SELECT USER FROM DUAL;' | sqlplus -s c##dbzadmin/dbz@ORCLCDB" | grep -q "C##DBZADMIN"; then
+        echo "✗ Cannot connect as c##dbzadmin"
+        echo "Attempting to fix by resetting password..."
+
+        oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOFFIX'
 ALTER USER c##dbzadmin IDENTIFIED BY dbz;
 EXIT;
 EOFFIX
 "
 
-    # Verify again
-    if ! oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "echo 'SELECT USER FROM DUAL;' | sqlplus -s c##dbzadmin/dbz@ORCLCDB" | grep -q "C##DBZADMIN"; then
-        echo "✗ Still cannot connect as c##dbzadmin"
-        echo "Please check the user creation manually"
-        exit 1
+        # Verify again
+        if ! oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "echo 'SELECT USER FROM DUAL;' | sqlplus -s c##dbzadmin/dbz@ORCLCDB" | grep -q "C##DBZADMIN"; then
+            echo "✗ Still cannot connect as c##dbzadmin"
+            echo "Please check the user creation manually"
+            exit 1
+        fi
     fi
-fi
 
-echo "✓ c##dbzadmin connection verified"
-echo ""
+    echo "✓ c##dbzadmin connection verified"
+    echo ""
 
-echo "Creating XStream outbound server 'dbzxout' for C##DBZUSER schema..."
+    echo "Creating XStream outbound server 'dbzxout' for C##DBZUSER schema..."
 CREATE_RESULT=$(oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "sqlplus -s c##dbzadmin/dbz@ORCLCDB <<'EOF'
 SET SERVEROUTPUT ON
 WHENEVER SQLERROR EXIT SQL.SQLCODE
@@ -304,17 +320,18 @@ EXIT;
 EOF
 " 2>&1)
 
-echo "$CREATE_RESULT"
+    echo "$CREATE_RESULT"
 
-if echo "$CREATE_RESULT" | grep -qE "ORA-|ERROR"; then
+    if echo "$CREATE_RESULT" | grep -qE "ORA-|ERROR"; then
+        echo ""
+        echo "✗ Failed to create XStream outbound server"
+        echo "Check the error above for details"
+        exit 1
+    fi
+
+    echo "✓ XStream outbound server created"
     echo ""
-    echo "✗ Failed to create XStream outbound server"
-    echo "Check the error above for details"
-    exit 1
 fi
-
-echo "✓ XStream outbound server created"
-echo ""
 
 #=============================================================================
 # STEP 6: Connect c##dbzuser to Outbound Server
