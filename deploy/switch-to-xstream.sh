@@ -28,7 +28,7 @@ SET PAGESIZE 0
 SELECT COUNT(*) FROM DBA_XSTREAM_OUTBOUND WHERE server_name = 'DBZXOUT';
 EXIT;
 EOFCHECK
-" 2>/dev/null | tr -d ' ' | grep -E '^[0-9]+$' || echo "0")
+" 2>/dev/null | grep -oE '[0-9]+' | head -1 || echo "0")
 
 if [ "$XSTREAM_SERVER" = "0" ] || [ -z "$XSTREAM_SERVER" ]; then
     echo ""
