@@ -385,6 +385,53 @@ EXIT;
 EOF
 "
 
+#=============================================================================
+# STEP 8: Start XStream Outbound Server
+#=============================================================================
+echo ""
+echo "=========================================="
+echo " Step 8: Start XStream Outbound Server"
+echo "=========================================="
+echo ""
+
+echo "Starting XStream outbound server (required for connector to attach)..."
+oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOF'
+BEGIN
+  DBMS_XSTREAM_ADM.START_OUTBOUND(server_name => 'dbzxout');
+END;
+/
+
+EXIT;
+EOF
+"
+
+echo "✓ XStream outbound server started"
+echo ""
+
+# Wait a moment for server to be ready
+echo "Waiting for XStream server to be ready..."
+sleep 5
+
+# Verify server is running
+echo "Verifying XStream server status..."
+SERVER_STATE=$(oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOFCHECK'
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SELECT state FROM V\$XSTREAM_OUTBOUND_SERVER WHERE server_name = 'DBZXOUT';
+EXIT;
+EOFCHECK
+" 2>/dev/null | grep -oE 'IDLE|WAITING FOR CLIENT|ATTACHED' | head -1 || echo "UNKNOWN")
+
+echo "XStream server state: ${SERVER_STATE}"
+
+if [ "$SERVER_STATE" = "IDLE" ] || [ "$SERVER_STATE" = "WAITING FOR CLIENT" ]; then
+    echo "✓ XStream server is ready to accept client connections"
+else
+    echo "⚠ Unexpected server state: ${SERVER_STATE}"
+    echo "  Server may still work, continuing..."
+fi
+
 echo ""
 echo "=========================================="
 echo " XStream Setup Complete!"
@@ -397,6 +444,7 @@ echo "✓ XStream tablespaces created"
 echo "✓ XStream privileges granted to c##dbzuser"
 echo "✓ XStream outbound server (dbzxout) created"
 echo "✓ User connected to outbound server"
+echo "✓ XStream outbound server started and ready"
 echo ""
 echo "Oracle is now ready for XStream CDC!"
 echo ""

@@ -42,7 +42,42 @@ if [ "$XSTREAM_SERVER" = "0" ] || [ -z "$XSTREAM_SERVER" ]; then
     exit 1
 fi
 
-echo "✓ XStream prerequisites configured (found server: DBZXOUT)"
+echo "✓ XStream outbound server exists"
+
+# Check if XStream server is started and ready
+echo "Checking if XStream server is started..."
+SERVER_STATE=$(oc exec ${ORACLE_POD} -n ${NAMESPACE} -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOFCHECK'
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SELECT state FROM V\$XSTREAM_OUTBOUND_SERVER WHERE server_name = 'DBZXOUT';
+EXIT;
+EOFCHECK
+" 2>/dev/null | grep -oE 'IDLE|WAITING FOR CLIENT|ATTACHED' | head -1 || echo "NOT_STARTED")
+
+if [ "$SERVER_STATE" = "NOT_STARTED" ] || [ -z "$SERVER_STATE" ]; then
+    echo ""
+    echo "✗ XStream outbound server NOT started!"
+    echo ""
+    echo "The server exists but is not running."
+    echo ""
+    echo "Start it with:"
+    echo "  oc exec \$(oc get pods -n ${NAMESPACE} -l app=oracle-db -o jsonpath='{.items[0].metadata.name}') -n ${NAMESPACE} -- bash -c \"sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOF'"
+    echo "BEGIN"
+    echo "  DBMS_XSTREAM_ADM.START_OUTBOUND(server_name => 'dbzxout');"
+    echo "END;"
+    echo "/"
+    echo "EXIT;"
+    echo "EOF"
+    echo "\""
+    echo ""
+    echo "Or re-run setup:"
+    echo "  bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/setup-xstream.sh)"
+    echo ""
+    exit 1
+fi
+
+echo "✓ XStream server is running (state: ${SERVER_STATE})"
 echo ""
 
 # Step 1: Stop LogMiner connector
