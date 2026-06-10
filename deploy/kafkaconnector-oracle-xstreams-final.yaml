@@ -19,7 +19,7 @@ spec:
 
     # XStream adapter configuration
     database.connection.adapter: xstream
-    xstream.out.server.name: dbzxout
+    database.out.server.name: dbzxout
 
     # Topic prefix
     topic.prefix: oracle-xstream
