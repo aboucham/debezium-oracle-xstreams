@@ -10,17 +10,16 @@ spec:
   tasksMax: 1
   state: stopped
   config:
-    # Database connection - Using full connection descriptor (bypasses tnsnames.ora)
-    # Must use jdbc:oracle:oci:@ prefix for XStreams (NOT jdbc:oracle:thin:@)
-    # Full descriptor directly specifies HOST, PORT, and SERVICE_NAME
-    database.url: "jdbc:oracle:oci:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=oracle-db)(PORT=1521))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=ORCLCDB)))"
+    # Database connection - XStream with database.url format
+    # Working at CDB level (C##DBZUSER), not PDB - do NOT set database.pdb.name
+    database.url: jdbc:oracle:oci:@//oracle-db:1521/ORCLCDB
+    database.dbname: ORCLCDB
     database.user: c##dbzuser
     database.password: dbz
-    database.dbname: ORCLCDB
 
-    # XStreams adapter configuration
+    # XStream adapter configuration
     database.connection.adapter: xstream
-    database.out.server.name: dbzxout
+    xstream.out.server.name: dbzxout
 
     # Topic prefix
     topic.prefix: oracle-xstream

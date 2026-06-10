@@ -49,15 +49,15 @@ echo "Creating build directory structure..."
 mkdir -p build/plugins/debezium-oracle-connector
 cd build/plugins/debezium-oracle-connector
 
-# 2.2. Extract the core Red Hat Build of Debezium Oracle Engine components directly over the network
-echo "Downloading Debezium Oracle connector..."
-curl -sL https://maven.repository.redhat.com/ga/io/debezium/debezium-connector-oracle/3.4.3.Final-redhat-00001/debezium-connector-oracle-3.4.3.Final-redhat-00001-plugin.zip -o dbz-oracle.zip && unzip -q dbz-oracle.zip && rm dbz-oracle.zip
-echo "✓ Debezium Oracle connector downloaded"
+# 2.2. Extract the core Debezium Oracle Engine components from Maven Central
+echo "Downloading Debezium Oracle connector 3.5.2.Final..."
+curl -sL https://repo1.maven.org/maven2/io/debezium/debezium-connector-oracle/3.5.2.Final/debezium-connector-oracle-3.5.2.Final-plugin.tar.gz -o dbz-oracle.tar.gz && tar -xzf dbz-oracle.tar.gz && rm dbz-oracle.tar.gz
+echo "✓ Debezium Oracle connector 3.5.2.Final downloaded"
 
 # 2.3. Pull down the supplementary Debezium Scripting Engine layer
-echo "Downloading Debezium scripting support..."
-curl -sL https://maven.repository.redhat.com/ga/io/debezium/debezium-scripting/3.4.3.Final-redhat-00001/debezium-scripting-3.4.3.Final-redhat-00001.zip -o dbz-script.zip && unzip -q dbz-script.zip && rm dbz-script.zip
-echo "✓ Debezium scripting support downloaded"
+echo "Downloading Debezium scripting support 3.5.2.Final..."
+curl -sL https://repo1.maven.org/maven2/io/debezium/debezium-scripting/3.5.2.Final/debezium-scripting-3.5.2.Final.tar.gz -o dbz-script.tar.gz && tar -xzf dbz-script.tar.gz && rm dbz-script.tar.gz
+echo "✓ Debezium scripting support 3.5.2.Final downloaded"
 
 # 2.4. Fetch the foundational Groovy execution dependencies
 echo "Downloading Groovy runtime libraries..."
