@@ -91,7 +91,7 @@ oc logs -n strimzi $(oc get pods -n strimzi -l app=oracle-db -o jsonpath='{.item
 
 ### Step 2: Configure Oracle Database
 
-Configure Oracle users, permissions, and supplemental logging for CDC:
+Configure Oracle users, permissions, create test table, and enable supplemental logging for CDC:
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/oracle-post-setup.sh)
@@ -99,9 +99,42 @@ bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstrea
 
 **What this does:**
 - Grants LogMiner and XStream privileges to `c##dbzuser`
-- Enables supplemental logging on `CUSTOMERS` table
-- Configures archivelog mode and retention
-- Creates test data in `C##DBZUSER.CUSTOMERS` table
+- Restarts LogMiner connector to apply privileges
+
+**Create CUSTOMERS table and enable supplemental logging:**
+
+```bash
+ORACLE_POD=$(oc get pods -n strimzi -l app=oracle-db -o jsonpath='{.items[0].metadata.name}')
+
+# Create CUSTOMERS table and insert initial data
+oc exec $ORACLE_POD -n strimzi -- bash -c "sqlplus -s c##dbzuser/dbz@ORCLCDB <<'EOF'
+CREATE TABLE CUSTOMERS (
+  ID NUMBER(10) PRIMARY KEY,
+  NAME VARCHAR2(100),
+  EMAIL VARCHAR2(100)
+);
+
+INSERT INTO CUSTOMERS (ID, NAME, EMAIL) VALUES (1, 'Alice Smith', 'alice@example.com');
+INSERT INTO CUSTOMERS (ID, NAME, EMAIL) VALUES (2, 'Bob Johnson', 'bob@example.com');
+INSERT INTO CUSTOMERS (ID, NAME, EMAIL) VALUES (3, 'Charlie Brown', 'charlie@example.com');
+COMMIT;
+EXIT;
+EOF
+"
+
+# Enable supplemental logging on CUSTOMERS table
+oc exec $ORACLE_POD -n strimzi -- bash -c "sqlplus -s sys/top_secret@ORCLCDB as sysdba <<'EOF'
+ALTER TABLE C##DBZUSER.CUSTOMERS ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
+EXIT;
+EOF
+"
+
+# Restart connector to trigger snapshot of existing data
+oc delete kafkaconnector oracle-logminer-connector -n strimzi
+sleep 5
+oc apply -f https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/kafkaconnector-oracle-logminer-final.yaml
+sleep 15
+```
 
 **Verify Oracle configuration:**
 
@@ -113,8 +146,15 @@ oc exec -n strimzi debezium-connect-connect-0 -- \
 
 # Expected: {"connector": "RUNNING", "task": "RUNNING"}
 
-# Test LogMiner CDC is working
-ORACLE_POD=$(oc get pods -n strimzi -l app=oracle-db -o jsonpath='{.items[0].metadata.name}')
+# Verify snapshot captured the 3 initial rows
+oc exec -n strimzi $(oc get pods -n strimzi -l strimzi.io/name=kafka-cluster-kafka -o jsonpath='{.items[0].metadata.name}') -- \
+  bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+  --topic oracle-logminer.C__DBZUSER.CUSTOMERS --from-beginning --max-messages 5 --timeout-ms 5000 2>/dev/null | \
+  jq -r '.payload.after | "ID=\(.ID), NAME=\(.NAME), EMAIL=\(.EMAIL)"'
+
+# Expected output: 3 rows (Alice, Bob, Charlie)
+
+# Test LogMiner CDC is working (real-time streaming)
 oc exec $ORACLE_POD -n strimzi -- sqlplus c##dbzuser/dbz@ORCLCDB <<'EOF'
 INSERT INTO CUSTOMERS (ID, NAME, EMAIL) VALUES (9001, 'LogMiner Test', 'logminer@test.com');
 COMMIT;
@@ -122,6 +162,7 @@ EXIT;
 EOF
 
 # Check event appeared in Kafka (should appear within 1-3 seconds)
+sleep 3
 oc exec -n strimzi $(oc get pods -n strimzi -l strimzi.io/name=kafka-cluster-kafka -o jsonpath='{.items[0].metadata.name}') -- \
   bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
   --topic oracle-logminer.C__DBZUSER.CUSTOMERS --from-beginning --max-messages 10 --timeout-ms 5000 2>/dev/null | \
