@@ -1,16 +1,16 @@
 #!/bin/bash
-# Download Oracle Instant Client 21.x and build Kafka Connect image
+# Download Oracle Instant Client 19.x and build Kafka Connect image
 set -e
 
 NAMESPACE="strimzi"
 GITHUB_RAW_BASE="https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy"
 
-echo "=== Step 3: Build Kafka Connect with Oracle Instant Client 21.x ==="
+echo "=== Step 3: Build Kafka Connect with Oracle Instant Client 19.x ==="
 echo ""
 
 # Detect if running locally or remotely
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
-if [ -f "${SCRIPT_DIR}/download-oracle-instantclient-21.sh" ]; then
+if [ -f "${SCRIPT_DIR}/download-oracle-instantclient-19.sh" ]; then
     EXEC_MODE="local"
 else
     EXEC_MODE="remote"
@@ -44,21 +44,21 @@ echo ""
 echo "Note: We only need the pod running to extract instantclient files."
 echo "Database initialization can continue in the background."
 
-# Download Oracle Instant Client 21.x and Debezium components
+# Download Oracle Instant Client 19.x and Debezium components
 echo ""
-echo "Downloading Oracle Instant Client 21.15 and Debezium components..."
+echo "Downloading Oracle Instant Client 19.24 and Debezium components..."
 echo "This will take 5-8 minutes (downloading 85MB Oracle IC + extracting from Oracle pod)..."
 if [ "$EXEC_MODE" = "local" ]; then
-    bash "${SCRIPT_DIR}/download-oracle-instantclient-21.sh"
+    bash "${SCRIPT_DIR}/download-oracle-instantclient-19.sh"
 else
-    bash <(curl -s "${GITHUB_RAW_BASE}/download-oracle-instantclient-21.sh")
+    bash <(curl -s "${GITHUB_RAW_BASE}/download-oracle-instantclient-19.sh")
 fi
 
-# Verify Oracle Instant Client 21.x was downloaded
+# Verify Oracle Instant Client 19.x was downloaded
 echo ""
-echo "Verifying Oracle Instant Client 21.x..."
-if [ ! -f "build/oracle-instantclient/lib/libocijdbc21.so" ]; then
-    echo "✗ Critical library libocijdbc21.so not found"
+echo "Verifying Oracle Instant Client 19.x..."
+if [ ! -f "build/oracle-instantclient/lib/libocijdbc19.so" ]; then
+    echo "✗ Critical library libocijdbc19.so not found"
     echo "Download may have failed. Check build/oracle-instantclient/lib/ directory"
     exit 1
 fi
@@ -70,7 +70,7 @@ if [ ! -f "build/plugins/debezium-oracle-connector/ojdbc11.jar" ]; then
 fi
 
 IC_SIZE=$(du -sh build/oracle-instantclient 2>/dev/null | awk '{print $1}')
-echo "✓ Oracle Instant Client 21.x downloaded (${IC_SIZE})"
+echo "✓ Oracle Instant Client 19.x downloaded (${IC_SIZE})"
 
 OJDBC_SIZE=$(ls -lh build/plugins/debezium-oracle-connector/ojdbc11.jar | awk '{print $5}')
 echo "✓ ojdbc11.jar found (${OJDBC_SIZE})"
@@ -83,12 +83,12 @@ if ! grep -q "COPY ./oracle-instantclient/" build/Dockerfile 2>/dev/null; then
     exit 1
 fi
 
-if ! grep -q "cp -P /opt/oracle/instantclient/lib/libnsl" build/Dockerfile 2>/dev/null; then
-    echo "✗ Dockerfile missing libnsl configuration"
+if ! grep -q "ln -sf /usr/lib64/libnsl.so.3 /usr/lib64/libnsl.so.1" build/Dockerfile 2>/dev/null; then
+    echo "✗ Dockerfile missing libnsl symlink configuration"
     exit 1
 fi
 
-echo "✓ Dockerfile configured with Oracle Instant Client 21.x and libnsl"
+echo "✓ Dockerfile configured with Oracle Instant Client 19.x and libnsl"
 
 # Build Kafka Connect image
 echo ""

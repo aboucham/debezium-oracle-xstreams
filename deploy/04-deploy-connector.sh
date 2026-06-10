@@ -113,14 +113,14 @@ if [ "$POD_STATUS" != "Running" ]; then
     exit 1
 fi
 
-# Verify Oracle Instant Client 21.x in the pod
+# Verify Oracle Instant Client 19.x in the pod
 echo ""
-echo "Verifying Oracle Instant Client 21.x in Kafka Connect pod..."
-if oc exec ${CONNECT_POD} -n ${NAMESPACE} -- test -f /opt/oracle/instantclient/lib/libocijdbc21.so 2>/dev/null; then
-    echo "✓ libocijdbc21.so found in pod"
+echo "Verifying Oracle Instant Client 19.x in Kafka Connect pod..."
+if oc exec ${CONNECT_POD} -n ${NAMESPACE} -- test -f /opt/oracle/instantclient/lib/libocijdbc19.so 2>/dev/null; then
+    echo "✓ libocijdbc19.so found in pod"
 else
-    echo "✗ libocijdbc21.so not found in pod"
-    echo "Image may not have been built correctly with Oracle Instant Client 21.x"
+    echo "✗ libocijdbc19.so not found in pod"
+    echo "Image may not have been built correctly with Oracle Instant Client 19.x"
     exit 1
 fi
 
@@ -130,8 +130,8 @@ else
     echo "⚠ libnsl.so.1 not found - connector may fail to load OCI library"
 fi
 
-if oc exec ${CONNECT_POD} -n ${NAMESPACE} -- test -f /opt/oracle/instantclient/lib/libclntsh.so.21.1 2>/dev/null; then
-    echo "✓ Oracle Instant Client 21.x libraries found"
+if oc exec ${CONNECT_POD} -n ${NAMESPACE} -- test -f /opt/oracle/instantclient/lib/libclntsh.so.19.1 2>/dev/null; then
+    echo "✓ Oracle Instant Client 19.x libraries found"
 else
     echo "✗ Oracle Instant Client libraries not found"
     exit 1

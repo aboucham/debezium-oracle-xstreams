@@ -174,7 +174,7 @@ if [ "$FINAL_PHASE" = "Complete" ]; then
     echo "Build ID: ${BUILD_ID}"
     echo "Image: image-registry.openshift-image-registry.svc:5000/${NAMESPACE}/${BUILD_NAME}:latest"
     echo ""
-    echo "✓ Kafka Connect image built successfully with Oracle Instant Client 21.x"
+    echo "✓ Kafka Connect image built successfully with Oracle Instant Client 19.x"
 else
     echo ""
     echo "Build finished with status: ${FINAL_PHASE}"
