@@ -18,7 +18,17 @@ mkdir -p build/oracle-instantclient/network/admin
 mkdir -p build/plugins/debezium-oracle-connector
 
 echo ""
-echo "Step 2: Downloading Oracle Instant Client 19.24 Basic package..."
+echo "Step 2: Downloading Debezium Oracle Connector 3.5.2.Final..."
+cd build/plugins/debezium-oracle-connector
+curl -sL https://repo1.maven.org/maven2/io/debezium/debezium-connector-oracle/3.5.2.Final/debezium-connector-oracle-3.5.2.Final-plugin.tar.gz -o dbz-oracle.tar.gz
+tar -xzf dbz-oracle.tar.gz
+rm dbz-oracle.tar.gz
+cd ../../..
+
+echo "  ✓ Debezium Oracle Connector 3.5.2.Final downloaded"
+
+echo ""
+echo "Step 3: Downloading Oracle Instant Client 19.24 Basic package..."
 echo "  Source: Oracle official download"
 echo ""
 
@@ -41,7 +51,7 @@ fi
 echo "  ✓ Instant Client Basic downloaded"
 
 echo ""
-echo "Step 3: Extracting Instant Client..."
+echo "Step 4: Extracting Instant Client..."
 unzip -q -o instantclient-basic-19.24.zip
 mv instantclient_19_24/* build/oracle-instantclient/lib/
 rmdir instantclient_19_24
@@ -49,7 +59,7 @@ rmdir instantclient_19_24
 echo "  ✓ Instant Client extracted"
 
 echo ""
-echo "Step 4: Copying Oracle libraries from database pod..."
+echo "Step 5: Copying Oracle libraries from database pod..."
 
 # Get Oracle pod
 ORACLE_POD=$(oc get pods -n ${NAMESPACE} -l ${POD_LABEL} -o jsonpath='{.items[0].metadata.name}')
@@ -74,13 +84,13 @@ cp build/oracle-instantclient/lib/xstreams.jar build/plugins/debezium-oracle-con
 echo "  ✓ xstreams.jar copied from IC 19"
 
 echo ""
-echo "Step 5: Downloading ojdbc11.jar (Debezium requirement)..."
+echo "Step 6: Downloading ojdbc11.jar (Debezium requirement)..."
 curl -sL https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc11/21.15.0.0/ojdbc11-21.15.0.0.jar -o build/plugins/debezium-oracle-connector/ojdbc11.jar
 
 echo "  ✓ ojdbc11.jar 21.15.0.0 downloaded"
 
 echo ""
-echo "Step 6: Creating Dockerfile..."
+echo "Step 7: Creating Dockerfile..."
 cat > build/Dockerfile <<'EOF'
 FROM registry.redhat.io/amq-streams/kafka-42-rhel9:3.2.0
 
@@ -125,13 +135,16 @@ EOF
 echo "  ✓ Dockerfile created"
 
 echo ""
-echo "=== Oracle Instant Client 19.x Setup Complete ==="
+echo "=== Setup Complete ==="
+echo ""
+echo "Debezium connector:"
+ls -lh build/plugins/debezium-oracle-connector/debezium-connector-oracle/*.jar | head -3
 echo ""
 echo "Instant Client libraries:"
-ls -lh build/oracle-instantclient/lib/*.so* | head -10
+ls -lh build/oracle-instantclient/lib/*.so* | head -5
 echo ""
 echo "JDBC drivers:"
-ls -lh build/plugins/debezium-oracle-connector/*.jar
+ls -lh build/plugins/debezium-oracle-connector/*.jar 2>/dev/null || echo "  (in debezium-connector-oracle directory)"
 echo ""
 echo "Dockerfile:"
 ls -lh build/Dockerfile
