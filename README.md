@@ -82,30 +82,188 @@ bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstrea
 
 This remote deployment will:
 1. Deploy Kafka cluster and Console UI (auto-detects OpenShift domain)
-2. Deploy Oracle database with proper security permissions
-3. Download Oracle Instant Client 21.15 from Oracle official repository
-4. Download ojdbc11 21.15.0.0 JDBC driver from Maven Central
-5. Extract xstreams.jar and message files from Oracle pod
-6. Build custom Kafka Connect image with Oracle Instant Client 21.x
+2. Deploy Oracle database 19c with proper security permissions
+3. Download Oracle Instant Client 19.x from Oracle official repository
+4. Download ojdbc11 21.15.0.0 JDBC driver from Maven Central (Debezium requirement)
+5. Extract xstreams.jar from Instant Client 19.x package
+6. Build custom Kafka Connect image with Oracle Instant Client 19.x + ojdbc11
 7. Deploy Kafka Connect cluster with XStreams support
 8. Deploy and configure the Debezium Oracle XStreams connector
 
 ## Components
 
-- **Debezium Oracle Connector**: 3.4.3.Final-redhat-00001
+- **Debezium Oracle Connector**: 3.5.2.Final
 - **AMQ Streams Base Image**: 3.2.0 (contains Kafka 4.2)
 - **Kafka Version**: 4.2.0
 - **Strimzi**: Kubernetes Operator for Apache Kafka
-- **Oracle Instant Client**: 21.15.0.0 (required for XStreams)
-- **Oracle JDBC Driver**: ojdbc11 21.15.0.0 (required for Debezium 3.4+)
-- **Oracle XStreams**: Native CDC library from Oracle 19c pod
+- **Oracle Database**: 19.3.0.0.0 Enterprise Edition
+- **Oracle Instant Client**: 19.x (native OCI libraries - must match database version)
+- **Oracle JDBC Driver**: ojdbc11 21.15.0.0 (Debezium requirement - backward compatible)
+- **Oracle XStreams**: xstreams.jar from Instant Client 19.x package
 - **Groovy**: 3.0.x (scripting support)
 
 **Note:** AMQ Streams and Kafka use different versioning:
 - AMQ Streams image tag: `kafka-42-rhel9:3.2.0` (AMQ Streams 3.2.0)
 - Kafka version inside: 4.2.0 (referenced in `deploy/kafka-connect.yaml`)
 
-**Important:** Debezium 3.4+ requires Oracle Instant Client 21.x or 23.x with ojdbc11. Oracle 19.x components (ojdbc8, Instant Client 19.x) are **not compatible**.
+## Critical Dependencies for XStream
+
+### Understanding Oracle Instant Client and JDBC Drivers
+
+**The Three Essential Components:**
+
+1. **Oracle Instant Client 19.x** (Native OCI Libraries)
+   - **Purpose**: Provides native C libraries (`libclntsh.so`, `libocijdbc19.so`) required for Oracle Call Interface (OCI)
+   - **Version Requirement**: **Must match Oracle Database version** (19.x for Oracle 19c)
+   - **Size**: ~85MB (Basic package)
+   - **Location in container**: `/opt/oracle/instantclient/lib/`
+   - **Key libraries**:
+     - `libclntsh.so.19.1` - Oracle client shared library
+     - `libocijdbc19.so` - OCI-JDBC bridge for native connectivity
+   - **Environment**: Requires `LD_LIBRARY_PATH=/opt/oracle/instantclient/lib`
+
+2. **ojdbc11.jar (21.15.0.0)** (JDBC Driver)
+   - **Purpose**: JDBC driver layer that Debezium uses to communicate with Oracle
+   - **Version Requirement**: **Debezium 3.5.2 requires ojdbc11 21.15.0.0** (documented requirement)
+   - **Size**: ~5.0MB
+   - **Source**: Maven Central
+   - **Backward Compatibility**: ojdbc11 21.x works with Oracle 19c, 21c, 23c databases
+   - **Location in container**: `/opt/kafka/plugins/debezium-oracle-connector/ojdbc11.jar`
+   - **Why not ojdbc8**: Debezium 3.5+ explicitly requires ojdbc11 for XStream support
+
+3. **xstreams.jar** (Oracle XStream API)
+   - **Purpose**: Oracle's proprietary XStream client library for high-performance CDC
+   - **Version Requirement**: **Must come from Instant Client 19.x package** (matches database)
+   - **Size**: ~31KB
+   - **Source**: Included in Oracle Instant Client 19.x package (`instantclient_19_x/lib/xstreams.jar`)
+   - **Location in container**: `/opt/kafka/plugins/debezium-oracle-connector/xstreams.jar`
+   - **Critical**: Do NOT use xstreams.jar from a different Oracle version
+
+### Why This Specific Configuration?
+
+**Oracle Instant Client 19.x (NOT 21.x):**
+- Native OCI libraries (`libclntsh.so`) must **exactly match** the Oracle database version
+- Oracle Database 19.3.0.0.0 requires Instant Client 19.x native libraries
+- Using IC 21.x causes version mismatch errors: `"Incompatible version of libocijdbc"`
+
+**ojdbc11.jar 21.15.0.0 (NOT ojdbc8):**
+- Debezium 3.5.2 documentation explicitly requires ojdbc11 21.15.0.0
+- JDBC drivers are backward compatible (ojdbc11 works with Oracle 19c)
+- The JDBC layer is separate from native OCI libraries
+
+**xstreams.jar from IC 19.x package:**
+- Must match the database version for XStream protocol compatibility
+- Included in the Instant Client package (`lib/xstreams.jar`)
+
+### Architecture: Two Separate Layers
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Debezium Connector (Java)                              │
+│                                                          │
+│  ┌────────────────────────────────────────────────┐    │
+│  │ JDBC Layer                                     │    │
+│  │ • ojdbc11.jar (21.15.0.0)                      │    │
+│  │ • xstreams.jar (from IC 19.x)                  │    │
+│  │ • Debezium Oracle Connector 3.5.2              │    │
+│  └─────────────────┬──────────────────────────────┘    │
+│                    │ JNI (Java Native Interface)        │
+│  ┌─────────────────▼──────────────────────────────┐    │
+│  │ Native OCI Layer (C libraries)                 │    │
+│  │ • Oracle Instant Client 19.x                   │    │
+│  │ • libclntsh.so.19.1                            │    │
+│  │ • libocijdbc19.so                              │    │
+│  └─────────────────┬──────────────────────────────┘    │
+└────────────────────┼──────────────────────────────────┘
+                     │ XStream Protocol
+┌────────────────────▼──────────────────────────────────┐
+│  Oracle Database 19.3.0.0.0                            │
+│  • XStream Outbound Server (DBZXOUT)                   │
+│  • XStream Capture Process                             │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Key Points:**
+- **JDBC layer (ojdbc11)**: Can be newer than database - provides backward compatibility
+- **Native OCI layer (IC 19.x)**: Must exactly match database version - no flexibility
+- **XStream API (xstreams.jar)**: Must match database version for protocol compatibility
+
+### RHEL 9 Compatibility
+
+**libnsl.so.1 Requirement:**
+- Oracle Instant Client 19.x requires `libnsl.so.1` (from RHEL 8)
+- RHEL 9 only provides `libnsl.so.3` via the `libnsl2` package
+- **Solution**: Create symlink `libnsl.so.1 → libnsl.so.3`
+
+```dockerfile
+# Install libnsl2 package
+RUN microdnf install -y libaio libnsl2 && microdnf clean all
+
+# Create compatibility symlink
+RUN ln -sf /usr/lib64/libnsl.so.3 /usr/lib64/libnsl.so.1
+```
+
+### What NOT to Do
+
+❌ **DO NOT use Oracle Instant Client 21.x with Oracle Database 19.3**
+- Causes: `"Incompatible version of libocijdbc[Jdbc:2115000, Jdbc-OCI:1924000]"`
+- Native OCI libraries must match database version
+
+❌ **DO NOT use ojdbc8.jar with Debezium 3.5.2**
+- Debezium 3.5.2 explicitly requires ojdbc11 21.15.0.0
+- ojdbc8 is not supported for XStream in this version
+
+❌ **DO NOT extract xstreams.jar from Oracle database pod**
+- Use the xstreams.jar from Instant Client package instead
+- Ensures version consistency and proper packaging
+
+❌ **DO NOT remove bundled ojdbc11.jar from Debezium plugin**
+- Keep the ojdbc11.jar that matches Debezium's requirements
+- Remove ojdbc8.jar if accidentally included
+
+### Verification Commands
+
+Check installed components in Kafka Connect pod:
+
+```bash
+# Check JDBC drivers
+oc exec debezium-connect-connect-0 -n strimzi -- ls -lh /opt/kafka/plugins/debezium-oracle-connector/*.jar
+
+# Expected output:
+# ojdbc11.jar     (5.0M) - JDBC driver
+# xstreams.jar    (31K)  - XStream API
+
+# Check Instant Client libraries
+oc exec debezium-connect-connect-0 -n strimzi -- ls -lh /opt/oracle/instantclient/lib/libclntsh.so.19.1
+
+# Check environment variables
+oc exec debezium-connect-connect-0 -n strimzi -- env | grep -E "LD_LIBRARY_PATH|ORACLE_HOME"
+
+# Expected:
+# ORACLE_HOME=/opt/oracle/instantclient
+# LD_LIBRARY_PATH=/opt/oracle/instantclient/lib:...
+```
+
+### Download Sources
+
+All components are downloaded from official sources:
+
+1. **Debezium 3.5.2.Final**: Maven Central
+   ```
+   https://repo1.maven.org/maven2/io/debezium/debezium-connector-oracle/3.5.2.Final/
+   ```
+
+2. **ojdbc11.jar 21.15.0.0**: Maven Central
+   ```
+   https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc11/21.15.0.0/
+   ```
+
+3. **Oracle Instant Client 19.x**: Oracle Official Downloads
+   ```
+   https://download.oracle.com/otn_software/linux/instantclient/1924000/
+   ```
+   - File: `instantclient-basic-linux.x64-19.24.0.0.0dbru.zip`
+   - Includes: `xstreams.jar`, native libraries, message files
 
 ## Local Deployment
 
@@ -153,7 +311,7 @@ bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstrea
 # Step 2: Deploy Oracle database
 bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/02-deploy-oracle.sh)
 
-# Step 3: Download Oracle Instant Client 21.x and build Kafka Connect
+# Step 3: Download Oracle Instant Client 19.x and build Kafka Connect
 bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy/03-build-kafka-connect.sh)
 
 # Step 4: Deploy Kafka Connect and XStreams connector
@@ -211,21 +369,19 @@ The automated scripts handle all these steps for you, but here's what happens un
 - Waits for Oracle to be ready
 
 **Script 03: Build Kafka Connect** (`deploy/03-build-kafka-connect.sh`)
-- Calls `deploy/download-oracle-instantclient-21.sh` to:
-  - Download Oracle Instant Client 21.15 Basic (85MB) from Oracle
-  - Download ojdbc11 21.15.0.0 from Maven Central
-  - Extract xstreams.jar from Oracle 19c pod
-  - Download message files from Oracle pod for error reporting
-  - Extract libnsl.so.1 from Oracle pod (RHEL 8 to RHEL 9 compatibility)
-  - Download Debezium 3.4.3 components and Groovy libraries
-  - Generate optimized Dockerfile with Oracle Instant Client 21.x support
+- Calls `deploy/download-oracle-instantclient-19.sh` to:
+  - Download Oracle Instant Client 19.x Basic (85MB) from Oracle
+  - Download ojdbc11 21.15.0.0 from Maven Central (Debezium requirement)
+  - Extract xstreams.jar from Instant Client 19.x package
+  - Download Debezium 3.5.2 components and Groovy libraries
+  - Generate Dockerfile with Oracle IC 19.x + libnsl.so.1 symlink for RHEL 9
 - Calls `deploy/build-kafka-connect-dbz-oracle-xs-plugins.sh` to:
   - Build custom Kafka Connect image with all components
-  - Upload build context to OpenShift (~925MB)
+  - Upload build context to OpenShift
   - Push final image to OpenShift internal registry
 
 **Script 04: Deploy Connector** (`deploy/04-deploy-connector.sh`)
-- Deploys Kafka Connect cluster using custom image with Oracle Instant Client 21.x
+- Deploys Kafka Connect cluster using custom image with Oracle IC 19.x + ojdbc11
 - Waits for Kafka Connect pod to be ready
 - Applies Debezium Oracle XStreams connector configuration
 - Verifies connector is running with XStreams adapter
@@ -235,19 +391,29 @@ The automated scripts handle all these steps for you, but here's what happens un
 The XStreams connector requires specific configuration:
 
 ```yaml
-database.url: "jdbc:oracle:oci:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=oracle-db)(PORT=1521))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=ORCLCDB)))"
+# Database connection - XStream with OCI driver
+database.url: jdbc:oracle:oci:@//oracle-db:1521/ORCLCDB
+database.dbname: ORCLCDB
 database.user: c##dbzuser
 database.password: dbz
-database.dbname: ORCLCDB
+
+# XStream adapter configuration
 database.connection.adapter: xstream
-database.out.server.name: dbzxout
+xstream.out.server.name: dbzxout
+
+# Topic and filtering
+topic.prefix: oracle-xstream
+schema.include.list: C##DBZUSER
+table.include.list: C##DBZUSER.CUSTOMERS
 ```
 
 Key points:
 - **OCI driver URL**: Must use `jdbc:oracle:oci:@` prefix (not `jdbc:oracle:thin:@`)
-- **Full TNS descriptor**: Inline connection descriptor avoids tnsnames.ora dependency
+- **EZConnect format**: `jdbc:oracle:oci:@//host:port/service_name` (simpler than TNS descriptor)
 - **XStream adapter**: `database.connection.adapter: xstream`
+- **Correct property**: `xstream.out.server.name` (NOT `database.out.server.name`)
 - **XStream server**: Must match server name created in Oracle database (`dbzxout`)
+- **Schema filtering**: Use `C##DBZUSER` for CDB-level common user schema
 
 ### Manual YAML Deployment (Remote)
 
@@ -390,9 +556,11 @@ If Oracle Instant Client download fails:
 **Solution:** The script may require Oracle account authentication for the first download. The download URL uses Oracle's public download endpoint, but if it fails:
 
 1. Manually download from: https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html
-2. File: `instantclient-basic-linux.x64-21.15.0.0.0dbru.zip`
-3. Save to the project root directory as `instantclient-basic-21.15.zip`
+2. File: `instantclient-basic-linux.x64-19.24.0.0.0dbru.zip` (Oracle Instant Client 19.24 for Linux x86-64)
+3. Save to the project root directory as `instantclient-basic-19.24.zip`
 4. Re-run the script
+
+**Important**: Download Instant Client **19.x** (not 21.x or 23.x) to match Oracle Database 19c
 
 ### XStreams Specific Issues
 
@@ -424,8 +592,19 @@ The OCI native library cannot be found.
 
 **Solution:**
 - Verify Oracle Instant Client libraries are in `/opt/oracle/instantclient/lib`
-- Check `java.library.path` system property in `kafka-connect.yaml`
-- Check `LD_LIBRARY_PATH` environment variable
+- Check `LD_LIBRARY_PATH` environment variable points to IC lib directory
+- Ensure `libocijdbc19.so` exists (for IC 19.x)
+- If using IC 19.x, create symlink: `ln -sf libocijdbc19.so libocijdbc21.so`
+
+**Error: `Incompatible version of libocijdbc`**
+
+Version mismatch between JDBC driver and native OCI libraries.
+
+**Solution:**
+- Ensure Oracle Instant Client version matches Oracle Database version
+- For Oracle 19c, use IC 19.x (not IC 21.x or 23.x)
+- Use ojdbc11.jar 21.15.0.0 for Debezium (backward compatible with Oracle 19c)
+- Verify only one ojdbc*.jar file exists in plugin directory (remove ojdbc8.jar if present)
 
 ### Connector Failures
 
@@ -498,11 +677,11 @@ debezium-oracle-xstreams/
 
 | File | Purpose |
 |------|---------|
-| `deploy/download-oracle-instantclient-21.sh` | Download Oracle Instant Client 21.15, ojdbc11, extract xstreams.jar and message files |
+| `deploy/download-oracle-instantclient-19.sh` | Download Oracle IC 19.x, ojdbc11 21.15.0.0, extract xstreams.jar, generate Dockerfile |
 | `deploy/build-kafka-connect-dbz-oracle-xs-plugins.sh` | Build and push custom Kafka Connect image to OpenShift registry |
-| `deploy/download-dbz-oracle-xs-plugins.sh` | Legacy: Download Debezium plugins with Oracle 19c components |
-| `deploy/extract-oci-minimal.sh` | Legacy: Extract minimal OCI libraries from Oracle pod (~400MB) |
-| `deploy/extract-oci-libraries.sh` | Legacy: Extract full OCI structure from Oracle pod (~2.5GB) |
+| `deploy/download-dbz-oracle-xs-plugins.sh` | Download Debezium 3.5.2 plugins and Groovy libraries from Maven Central |
+| `deploy/setup-xstream.sh` | Configure Oracle XStream outbound server and capture process |
+| `deploy/switch-to-xstream.sh` | Switch from LogMiner to XStream connector (validates XStream ready) |
 
 ### YAML Configurations
 
@@ -516,11 +695,10 @@ debezium-oracle-xstreams/
 
 | File | Purpose |
 |------|---------|
-| `build/Dockerfile` | Auto-generated container image definition (base: kafka-42-rhel9:3.2.0) |
-| `build/plugins/` | Auto-generated plugin directory with Debezium, ojdbc11, xstreams.jar, Groovy |
-| `build/oracle-instantclient/` | Oracle Instant Client 21.15 structure (lib/, network/admin/, message files) |
-| `instantclient-basic-21.15.zip` | Downloaded Oracle Instant Client 21.15 Basic package (85MB) |
-| `libnsl-2.17.so` | Extracted libnsl from Oracle pod for RHEL 9 compatibility |
+| `build/Dockerfile` | Auto-generated Dockerfile with IC 19.x + libnsl symlink (base: kafka-42-rhel9:3.2.0) |
+| `build/plugins/debezium-oracle-connector/` | Debezium 3.5.2, ojdbc11.jar (21.15.0.0), xstreams.jar (from IC 19.x), Groovy |
+| `build/oracle-instantclient/lib/` | Oracle Instant Client 19.x native libraries (libclntsh.so.19.1, libocijdbc19.so, etc.) |
+| `instantclient-basic-19.24.zip` | Downloaded Oracle Instant Client 19.24 Basic package (~85MB) |
 
 ## Architecture
 
@@ -536,9 +714,10 @@ debezium-oracle-xstreams/
                         ▼
 ┌─────────────────────────────────────────────────────────┐
 │  Kafka Connect Pod                                      │
-│  - Oracle Instant Client 21.15                          │
-│  - ojdbc11 21.15.0.0                                    │
-│  - Debezium Oracle Connector 3.4.3                      │
+│  - Oracle Instant Client 19.x (native OCI)              │
+│  - ojdbc11 21.15.0.0 (JDBC driver)                      │
+│  - xstreams.jar from IC 19.x                            │
+│  - Debezium Oracle Connector 3.5.2                      │
 │  - XStreams adapter (100k+ events/sec)                  │
 └───────────────────────┬─────────────────────────────────┘
                         │ Kafka Protocol
@@ -641,11 +820,7 @@ cd debezium-oracle-xstreams
 rm -rf build/
 
 # Remove downloaded Oracle components
-rm -f instantclient-basic-21.15.zip
-rm -f libnsl-2.17.so
-rm -f ojdbc8.jar
-rm -f xstreams.jar
-rm -f oracle-mesg.tar.gz
+rm -f instantclient-basic-19.24.zip
 ```
 
 ### Verification After Cleanup
@@ -685,11 +860,13 @@ bash <(curl -s https://raw.githubusercontent.com/aboucham/debezium-oracle-xstrea
 
 ## References
 
-- [Debezium Oracle Connector Documentation](https://debezium.io/documentation/reference/3.4/connectors/oracle.html)
-- [Debezium 3.4 Supported Configurations](https://debezium.io/documentation/reference/3.4/connectors/oracle.html#oracle-supported-topologies)
+- [Debezium Oracle Connector Documentation](https://debezium.io/documentation/reference/stable/connectors/oracle.html)
+- [Debezium 3.5 Oracle Connector](https://debezium.io/documentation/reference/3.5/connectors/oracle.html)
+- [Debezium Supported Configurations for Oracle](https://debezium.io/documentation/reference/stable/connectors/oracle.html#oracle-supported-topologies)
 - [Strimzi Documentation](https://strimzi.io/documentation/)
 - [Oracle XStreams Documentation](https://docs.oracle.com/en/database/oracle/oracle-database/19/xstrm/)
-- [Oracle Instant Client Downloads](https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html)
+- [Oracle Instant Client 19.x Downloads](https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html)
+- [Oracle Database 19c Documentation](https://docs.oracle.com/en/database/oracle/oracle-database/19/)
 
 ## License
 
