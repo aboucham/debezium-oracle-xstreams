@@ -18,14 +18,14 @@ mkdir -p build/oracle-instantclient/network/admin
 mkdir -p build/plugins/debezium-oracle-connector
 
 echo ""
-echo "Step 2: Downloading Debezium Oracle Connector 3.5.2.Final..."
+echo "Step 2: Downloading Debezium Oracle Connector 3.4.3.Final..."
 cd build/plugins/debezium-oracle-connector
-curl -sL https://repo1.maven.org/maven2/io/debezium/debezium-connector-oracle/3.5.2.Final/debezium-connector-oracle-3.5.2.Final-plugin.tar.gz -o dbz-oracle.tar.gz
+curl -sL https://repo1.maven.org/maven2/io/debezium/debezium-connector-oracle/3.4.3.Final/debezium-connector-oracle-3.4.3.Final-plugin.tar.gz -o dbz-oracle.tar.gz
 tar -xzf dbz-oracle.tar.gz
 rm dbz-oracle.tar.gz
 cd ../../..
 
-echo "  ✓ Debezium Oracle Connector 3.5.2.Final downloaded"
+echo "  ✓ Debezium Oracle Connector 3.4.3.Final downloaded"
 
 echo ""
 echo "Step 3: Downloading Oracle Instant Client 19.24 Basic package..."
@@ -117,10 +117,6 @@ COPY ./oracle-instantclient/ /opt/oracle/instantclient/
 # Create libnsl.so.1 symlink for Oracle IC 19.x compatibility
 # RHEL 9 libnsl2 provides libnsl.so.3, but IC 19.x expects libnsl.so.1
 RUN ln -sf /usr/lib64/libnsl.so.3 /usr/lib64/libnsl.so.1
-
-# Create libocijdbc21.so symlink for Debezium 3.5.2 compatibility
-# Debezium 3.5.2 expects IC 21.x (ocijdbc21) but we use IC 19.x for Oracle 19c
-RUN ln -sf /opt/oracle/instantclient/lib/libocijdbc19.so /opt/oracle/instantclient/lib/libocijdbc21.so
 
 # Set Oracle environment variables
 ENV ORACLE_HOME=/opt/oracle/instantclient
