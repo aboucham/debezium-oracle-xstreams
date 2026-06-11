@@ -118,6 +118,10 @@ COPY ./oracle-instantclient/ /opt/oracle/instantclient/
 # RHEL 9 libnsl2 provides libnsl.so.3, but IC 19.x expects libnsl.so.1
 RUN ln -sf /usr/lib64/libnsl.so.3 /usr/lib64/libnsl.so.1
 
+# Create libocijdbc21.so symlink for Debezium compatibility
+# Both 3.4.3 and 3.5.2 expect IC 21.x (ocijdbc21) but we use IC 19.x for Oracle 19c
+RUN ln -sf /opt/oracle/instantclient/lib/libocijdbc19.so /opt/oracle/instantclient/lib/libocijdbc21.so
+
 # Set Oracle environment variables
 ENV ORACLE_HOME=/opt/oracle/instantclient
 ENV TNS_ADMIN=/opt/oracle/instantclient/network/admin
