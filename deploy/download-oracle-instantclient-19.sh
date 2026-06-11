@@ -84,10 +84,18 @@ cp build/oracle-instantclient/lib/xstreams.jar build/plugins/debezium-oracle-con
 echo "  ✓ xstreams.jar copied from IC 19"
 
 echo ""
-echo "Step 6: Downloading ojdbc11.jar (Debezium requirement)..."
-curl -sL https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc11/21.15.0.0/ojdbc11-21.15.0.0.jar -o build/plugins/debezium-oracle-connector/ojdbc11.jar
+echo "Step 6: Getting ojdbc8.jar (version-matched with IC 19.x)..."
+# For OCI driver, JDBC and IC versions MUST match
+# Try to copy from IC lib first, if not available extract from Oracle pod
+if [ -f "build/oracle-instantclient/lib/ojdbc8.jar" ]; then
+    echo "  Found ojdbc8.jar in Instant Client package"
+    cp build/oracle-instantclient/lib/ojdbc8.jar build/plugins/debezium-oracle-connector/ojdbc8.jar
+else
+    echo "  Extracting ojdbc8.jar from Oracle pod..."
+    oc cp ${NAMESPACE}/${ORACLE_POD}:/opt/oracle/product/19c/dbhome_1/jdbc/lib/ojdbc8.jar build/plugins/debezium-oracle-connector/ojdbc8.jar
+fi
 
-echo "  ✓ ojdbc11.jar 21.15.0.0 downloaded"
+echo "  ✓ ojdbc8.jar obtained (version-matched with IC 19.x)"
 
 echo ""
 echo "Step 7: Creating Dockerfile..."

@@ -331,12 +331,12 @@ XStream requires a specific combination of components that work together:
 - **Size**: ~85MB
 - **Location**: `/opt/oracle/instantclient/lib/` in Kafka Connect pod
 
-**2. ojdbc11.jar (21.15.0.0)** (JDBC Driver)
+**2. ojdbc8.jar (from IC 19.x)** (JDBC Driver)
 - **Purpose**: JDBC driver layer that Debezium uses to communicate with Oracle
-- **Version Rule**: **Debezium 3.4.3 requires ojdbc11 21.15.0.0** (documented requirement)
-- **Why**: Backward compatible - ojdbc11 21.x works with Oracle 19c, 21c, 23c databases
-- **Size**: ~5.0MB
-- **Source**: Maven Central
+- **Version Rule**: **Must match Instant Client version for OCI driver**
+- **Why**: For OCI/XStream, JDBC and IC versions must be identical
+- **Size**: ~2.4MB
+- **Source**: Included in Oracle Instant Client 19.x package
 
 **3. xstreams.jar** (XStream API)
 - **Purpose**: Oracle's proprietary XStream client library for high-performance CDC
@@ -391,8 +391,9 @@ RUN ln -sf /usr/lib64/libnsl.so.3 /usr/lib64/libnsl.so.1
 ❌ **DO NOT use Oracle Instant Client 21.x with Oracle Database 19c**
 - Causes: `"Incompatible version of libocijdbc"`
 
-❌ **DO NOT use ojdbc8.jar with Debezium 3.4.3**
-- Debezium 3.4.3 requires ojdbc11 21.15.0.0
+❌ **DO NOT use ojdbc11 with Oracle Instant Client 19.x for OCI/XStream**
+- OCI driver requires JDBC version to match IC version exactly
+- Use ojdbc8.jar from IC 19.x package instead
 
 ❌ **DO NOT extract xstreams.jar from Oracle database pod**
 - Use xstreams.jar from Instant Client 19.x package instead
@@ -565,7 +566,7 @@ echo "https://$(oc get route my-console -n strimzi -o jsonpath='{.spec.host}')"
 - **Debezium Oracle Connector**: 3.4.3.Final
 - **Oracle Database**: 19.3.0.0.0 Enterprise Edition
 - **Oracle Instant Client**: 19.x (native OCI libraries)
-- **Oracle JDBC Driver**: ojdbc11 21.15.0.0
+- **Oracle JDBC Driver**: ojdbc8.jar from IC 19.x (version-matched)
 - **Oracle XStreams**: xstreams.jar from IC 19.x
 - **Strimzi**: Kubernetes Operator for Apache Kafka
 - **Kafka**: 4.2.0 (KRaft mode)
