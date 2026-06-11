@@ -7,7 +7,7 @@ Automated deployment of Debezium Oracle Connector with XStreams support on OpenS
 This project deploys a complete Change Data Capture (CDC) pipeline with:
 - **Strimzi Kafka** (KRaft mode) - Event streaming platform  
 - **Oracle Database 19c** - Source database with XStreams API enabled
-- **Debezium Oracle Connector 3.4.3** - CDC connector using XStreams for high performance
+- **Debezium Oracle Connector 3.5.2** - CDC connector using XStreams for high performance
 
 **XStreams Performance:**
 - **Throughput**: 100,000+ events/second (vs ~50,000 for LogMiner)
@@ -331,12 +331,12 @@ XStream requires a specific combination of components that work together:
 - **Size**: ~85MB
 - **Location**: `/opt/oracle/instantclient/lib/` in Kafka Connect pod
 
-**2. ojdbc8.jar (from IC 19.x)** (JDBC Driver)
+**2. ojdbc11.jar 21.15.0.0** (JDBC Driver)
 - **Purpose**: JDBC driver layer that Debezium uses to communicate with Oracle
-- **Version Rule**: **Must match Instant Client version for OCI driver**
-- **Why**: For OCI/XStream, JDBC and IC versions must be identical
-- **Size**: ~2.4MB
-- **Source**: Included in Oracle Instant Client 19.x package
+- **Version Rule**: **Backward compatible - can be newer than database version**
+- **Why**: JDBC 21.x provides backward compatibility with Oracle 19c
+- **Size**: ~4.5MB
+- **Source**: Maven Central
 
 **3. xstreams.jar** (XStream API)
 - **Purpose**: Oracle's proprietary XStream client library for high-performance CDC
@@ -390,13 +390,11 @@ RUN ln -sf /usr/lib64/libnsl.so.3 /usr/lib64/libnsl.so.1
 
 ❌ **DO NOT use Oracle Instant Client 21.x with Oracle Database 19c**
 - Causes: `"Incompatible version of libocijdbc"`
-
-❌ **DO NOT use ojdbc11 with Oracle Instant Client 19.x for OCI/XStream**
-- OCI driver requires JDBC version to match IC version exactly
-- Use ojdbc8.jar from IC 19.x package instead
+- Native OCI layer must match database version exactly
 
 ❌ **DO NOT extract xstreams.jar from Oracle database pod**
 - Use xstreams.jar from Instant Client 19.x package instead
+- XStream protocol requires version matching
 
 ## Understanding XStream Status
 
@@ -563,10 +561,10 @@ echo "https://$(oc get route my-console -n strimzi -o jsonpath='{.spec.host}')"
 
 ## Components
 
-- **Debezium Oracle Connector**: 3.4.3.Final
+- **Debezium Oracle Connector**: 3.5.2.Final
 - **Oracle Database**: 19.3.0.0.0 Enterprise Edition
 - **Oracle Instant Client**: 19.x (native OCI libraries)
-- **Oracle JDBC Driver**: ojdbc8.jar from IC 19.x (version-matched)
+- **Oracle JDBC Driver**: ojdbc11 21.15.0.0
 - **Oracle XStreams**: xstreams.jar from IC 19.x
 - **Strimzi**: Kubernetes Operator for Apache Kafka
 - **Kafka**: 4.2.0 (KRaft mode)
