@@ -118,7 +118,7 @@ exec_script "01-deploy-oracle.sh" "1" "Step 1: Deploying Oracle Database"
 exec_script "02-deploy-kafka.sh" "2" "Step 2: Deploying Kafka Cluster and Console UI"
 
 # Step 3: Build Kafka Connect (while Oracle initializes)
-exec_script "03-build-kafka-connect.sh" "3" "Step 3: Building Kafka Connect with Oracle Instant Client 19.x"
+exec_script "03-build-kafka-connect.sh" "3" "Step 3: Building Kafka Connect with Oracle Instant Client 21.x"
 
 # Step 4: Deploy Connector
 exec_script "04-deploy-connector.sh" "4" "Step 4: Deploying LogMiner Connector"

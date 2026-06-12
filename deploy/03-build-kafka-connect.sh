@@ -1,11 +1,11 @@
 #!/bin/bash
-# Download Oracle Instant Client 19.x and build Kafka Connect image
+# Download Oracle Instant Client 21.x and build Kafka Connect image
 set -e
 
 NAMESPACE="strimzi"
 GITHUB_RAW_BASE="https://raw.githubusercontent.com/aboucham/debezium-oracle-xstreams/main/deploy"
 
-echo "=== Step 3: Build Kafka Connect with Oracle Instant Client 19.x ==="
+echo "=== Step 3: Build Kafka Connect with Oracle Instant Client 21.x ==="
 echo ""
 
 # Detect if running locally or remotely
@@ -44,21 +44,21 @@ echo ""
 echo "Note: We only need the pod running to extract instantclient files."
 echo "Database initialization can continue in the background."
 
-# Download Oracle Instant Client 19.x and Debezium components
+# Download Oracle Instant Client 21.x and Debezium components
 echo ""
-echo "Downloading Oracle Instant Client 19.24 and Debezium components..."
-echo "This will take 5-8 minutes (downloading 85MB Oracle IC + extracting from Oracle pod)..."
+echo "Downloading Oracle Instant Client 21.15 and Debezium components..."
+echo "This will take 5-8 minutes (downloading IC 21.15 + IC 19.24 for xstreams.jar)..."
 if [ "$EXEC_MODE" = "local" ]; then
     bash "${SCRIPT_DIR}/download-oracle-instantclient-19.sh"
 else
     bash <(curl -s "${GITHUB_RAW_BASE}/download-oracle-instantclient-19.sh")
 fi
 
-# Verify Oracle Instant Client 19.x was downloaded
+# Verify Oracle Instant Client 21.x was downloaded
 echo ""
-echo "Verifying Oracle Instant Client 19.x..."
-if [ ! -f "build/oracle-instantclient/lib/libocijdbc19.so" ]; then
-    echo "✗ Critical library libocijdbc19.so not found"
+echo "Verifying Oracle Instant Client 21.x..."
+if [ ! -f "build/oracle-instantclient/lib/libocijdbc21.so" ]; then
+    echo "✗ Critical library libocijdbc21.so not found"
     echo "Download may have failed. Check build/oracle-instantclient/lib/ directory"
     exit 1
 fi
@@ -70,7 +70,7 @@ if [ ! -f "build/plugins/debezium-oracle-connector/ojdbc11.jar" ]; then
 fi
 
 IC_SIZE=$(du -sh build/oracle-instantclient 2>/dev/null | awk '{print $1}')
-echo "✓ Oracle Instant Client 19.x downloaded (${IC_SIZE})"
+echo "✓ Oracle Instant Client 21.x downloaded (${IC_SIZE})"
 
 OJDBC_SIZE=$(ls -lh build/plugins/debezium-oracle-connector/ojdbc11.jar | awk '{print $5}')
 echo "✓ ojdbc11.jar found (${OJDBC_SIZE})"
