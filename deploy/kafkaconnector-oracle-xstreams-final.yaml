@@ -10,16 +10,17 @@ spec:
   tasksMax: 1
   state: stopped
   config:
-    # Database connection - XStream with database.url format
+    # Database connection - Using hostname/port/dbname (OCI driver will be used automatically)
     # Working at CDB level (C##DBZUSER), not PDB - do NOT set database.pdb.name
-    database.url: jdbc:oracle:oci:@//oracle-db:1521/ORCLCDB
+    database.hostname: oracle-db
+    database.port: 1521
     database.dbname: ORCLCDB
     database.user: c##dbzuser
     database.password: dbz
 
     # XStream adapter configuration
     database.connection.adapter: xstream
-    xstream.out.server.name: dbzxout
+    database.out.server.name: dbzxout
 
     # Topic prefix
     topic.prefix: oracle-xstream

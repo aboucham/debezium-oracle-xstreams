@@ -7,7 +7,7 @@ Automated deployment of Debezium Oracle Connector with XStreams support on OpenS
 This project deploys a complete Change Data Capture (CDC) pipeline with:
 - **Strimzi Kafka** (KRaft mode) - Event streaming platform  
 - **Oracle Database 19c** - Source database with XStreams API enabled
-- **Debezium Oracle Connector 3.5.2** - CDC connector using XStreams for high performance
+- **Debezium Oracle Connector 3.4.3** - CDC connector using XStreams for high performance
 
 **XStreams Performance:**
 - **Throughput**: 100,000+ events/second (vs ~50,000 for LogMiner)
@@ -561,7 +561,7 @@ echo "https://$(oc get route my-console -n strimzi -o jsonpath='{.spec.host}')"
 
 ## Components
 
-- **Debezium Oracle Connector**: 3.5.2.Final
+- **Debezium Oracle Connector**: 3.4.3.Final
 - **Oracle Database**: 19.3.0.0.0 Enterprise Edition
 - **Oracle Instant Client**: 19.x (native OCI libraries)
 - **Oracle JDBC Driver**: ojdbc11 21.15.0.0
